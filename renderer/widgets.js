@@ -644,7 +644,7 @@ function settingsPanel({ s }) {
     `<section><h3>Apariencia</h3>
       <div class="field"><label>Estilo</label>${select('style', STYLES)}</div>
       <div class="field"><label>Barra de tareas de Windows mientras Nimbo está abierto</label>${select('taskbar', TASKBAR)}</div>
-      ${check('openAtLogin', 'Iniciar con Windows')}${check('hideOnFullscreen', 'Ocultar el dock con apps a pantalla completa')}${check('use24h', 'Formato de 24 horas')}
+      ${check('reserveSpace', 'Reservar espacio: las ventanas maximizadas terminan arriba del dock')}${check('openAtLogin', 'Iniciar con Windows')}${check('hideOnFullscreen', 'Ocultar el dock con apps a pantalla completa')}${check('use24h', 'Formato de 24 horas')}
     </section>
     <section><h3>Widgets</h3><small class="muted">Activa, desactiva y ordena lo que aparece en el dock.</small>
       <div class="wlist">${st.widgets.map((w, i) => { const d = WIDGET_DEFS[w.id]; return `<div class="witem">
@@ -682,3 +682,15 @@ function settingsPanel({ s }) {
 }
 
 WIDGET_DEFS.settings = { name: 'Ajustes', desc: '', width: 420, keepWhileTyping: true, panel: settingsPanel };
+
+// Widgets que no entraron en el dock (los esconde el dock y los anota en localStorage, compartido entre ventanas)
+WIDGET_DEFS.more = {
+  name: 'Más', desc: '', width: 360,
+  panel: (c) => {
+    let hidden = [];
+    try { hidden = JSON.parse(localStorage.getItem('nimboHidden') || '[]'); } catch {}
+    const items = hidden.map((id) => { let t = ''; try { t = WIDGET_DEFS[id]?.tile?.(c) || ''; } catch {} return t ? `<div class="more-item">${t}<small class="muted">${esc(WIDGET_DEFS[id].name)}</small></div>` : ''; }).join('');
+    return head('Más widgets') + (items ? `<div class="more-grid">${items}</div>` : empty('Todo entra en el dock.')) +
+      `<small class="muted">No entraban en el dock. Para elegir cuáles mostrar, ve a Ajustes → Widgets.</small>`;
+  },
+};

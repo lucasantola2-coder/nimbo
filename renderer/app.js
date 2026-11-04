@@ -15,6 +15,13 @@ const ctx = () => ({ s: S, now: new Date(Date.now()), local });
 
 // ------------------------------------------------------------------ dock
 const tileCache = new Map();
+// Si el dock no entra en la pantalla: primero se compacta y después se esconden widgets (de menos a más importantes)
+// en un botón «⋯». Las apps nunca se esconden.
+const HIDE_ORDER = ['recycle', 'storage', 'battery', 'network', 'stats', 'notes', 'todos', 'timer', 'pomodoro', 'calendar',
+  'anthropic', 'openai', 'github', 'weather', 'taskview', 'claudeCode', 'music', 'stocks', 'desktop', 'system'];
+let fitLevel = 0;      // 0 normal · 1 compacto · 2+ compacto y escondiendo (fitLevel - 1) widgets
+let fitSig = '';
+
 function renderDock() {
   if (!S) return;
   let dock = root.querySelector('.dock');
@@ -23,29 +30,41 @@ function renderDock() {
     dock = root.querySelector('.dock');
     new ResizeObserver(() => api.dockSize(dock.getBoundingClientRect().width)).observe(dock);
   }
+  const enabledIds = S.settings.widgets.filter((w) => w.enabled).map((w) => w.id);
+  const sig = enabledIds.join() + '|' + (S.live.groups || []).length + '|' + S.dockMax;
+  if (sig !== fitSig) { fitSig = sig; fitLevel = 0; }   // cambió algo: volver a probar desde el tamaño normal
+  paintDock(dock, enabledIds);
+  const max = (S.dockMax || window.screen.width - 20) - 4;
+  while (dock.scrollWidth > max && fitLevel < 2 + HIDE_ORDER.length) { fitLevel++; paintDock(dock, enabledIds); }
+}
+
+function paintDock(dock, enabledIds) {
   const c = ctx();
-  const ids = S.settings.widgets.filter((w) => w.enabled).map((w) => w.id).concat('_gear');
-  // separar grupos: inicio + apps | widgets | reloj
+  dock.classList.toggle('compact', fitLevel >= 1);
+  const hidden = fitLevel >= 2 ? HIDE_ORDER.filter((id) => enabledIds.includes(id)).slice(0, fitLevel - 1) : [];
+  try { localStorage.setItem('nimboHidden', JSON.stringify(hidden)); } catch {}
+  const ids = enabledIds.filter((id) => !hidden.includes(id)).concat(hidden.length ? ['_more'] : [], '_gear');
   const html = [];
   for (const id of ids) {
     let h = '';
     if (id === '_gear') h = `<button class="tile tile-icon gear" data-panel="settings" title="Ajustes">${icon('gear', 18)}</button>`;
+    else if (id === '_more') h = `<button class="tile tile-icon narrow more" data-panel="more" title="${hidden.length} widgets más">⋯</button>`;
     else { try { h = WIDGET_DEFS[id]?.tile?.(c) || ''; } catch (e) { console.error(id, e); h = ''; } }
     if (h) html.push({ id, h });
   }
   // reconciliar por id para no repintar imágenes que no cambian
   const existing = new Map([...dock.children].map((el) => [el.dataset.w, el]));
-  let prev = null;
+  let prev = null, prevId = null;
   for (const { id, h } of html) {
     let el = existing.get(id);
     if (!el) { el = document.createElement('div'); el.className = 'slot'; el.dataset.w = id; }
     existing.delete(id);
     if (tileCache.get(id) !== h) { el.innerHTML = h; tileCache.set(id, h); }
     el.classList.toggle('open', openWidget != null && el.querySelector(`[data-panel="${openWidget}"]`) != null);
-    el.classList.toggle('sep-before', id === 'apps' || (prev === 'apps'));
+    el.classList.toggle('sep-before', id === 'apps' || prevId === 'apps');
     const ref = prev ? prev.nextSibling : dock.firstChild;
     if (ref !== el) dock.insertBefore(el, ref);
-    prev = el;
+    prev = el; prevId = id;
   }
   for (const [id, el] of existing) { el.remove(); tileCache.delete(id); }
 }

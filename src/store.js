@@ -30,6 +30,7 @@ const DEFAULTS = {
     taskbar: 'autohide',     // autohide | hide | none
     openAtLogin: false,
     hideOnFullscreen: false,
+    reserveSpace: true,        // las ventanas maximizadas terminan arriba del dock
     use24h: true,
     city: '',
     location: null,          // { name, lat, lon }

@@ -114,7 +114,7 @@ try {
             $req = $line | ConvertFrom-Json
             $a = $req.args
             $res = switch ($req.cmd) {
-                'windows'        { @{ windows = @([NimboWin]::ListWindows($selfPid)); fullscreen = [NimboWin]::FullscreenApp($selfPid) } }
+                'windows'        { @{ windows = @([NimboWin]::ListWindows($selfPid)); fullscreen = [NimboWin]::FullscreenApp($selfPid); remote = [NimboWin]::IsRemoteSession() } }
                 'focus'          { [NimboWin]::Focus([long]$a.hwnd); $true }
                 'minimize'       { [NimboWin]::Minimize([long]$a.hwnd); $true }
                 'close'          { [NimboWin]::Close([long]$a.hwnd); $true }
@@ -130,6 +130,9 @@ try {
                     }
                     $true
                 }
+                'appbar'         { $r = [NimboWin]::AppBarSet([long]$a.hwnd, [int]$a.left, [int]$a.top, [int]$a.right, [int]$a.bottom); @{ rect = $r } }
+                'appbarRemove'   { [NimboWin]::AppBarRemoveAll(); $true }
+                'remote'         { [NimboWin]::IsRemoteSession() }
                 'recycle'        { $r = [NimboWin]::RecycleBin(); @{ count = $r[0]; size = $r[1] } }
                 'emptyRecycle'   { [NimboWin]::EmptyRecycleBin(); $true }
                 'drives'         { @{ drives = @([NimboWin]::Drives()) } }
@@ -152,5 +155,6 @@ try {
         }
     }
 } finally {
+    [NimboWin]::AppBarRemoveAll()
     [NimboWin]::RestoreTaskbar()
 }

@@ -43,6 +43,9 @@ public class NimboWin {
     [DllImport("shell32.dll", CharSet = CharSet.Unicode)] static extern int SHEmptyRecycleBin(IntPtr hwnd, string root, uint flags);
     [DllImport("gdi32.dll")] static extern int GetObject(IntPtr h, int size, out DIBSECTION ds);
     [DllImport("gdi32.dll")] static extern bool DeleteObject(IntPtr h);
+    [DllImport("user32.dll")] static extern int GetSystemMetrics(int idx);
+    [DllImport("user32.dll")] static extern IntPtr SetThreadDpiAwarenessContext(IntPtr ctx);
+    [DllImport("user32.dll")] static extern bool IsWindow(IntPtr h);
 
     // ---- COM: propiedades de ventanas y accesos directos, imágenes del shell ----
     [DllImport("shell32.dll")] static extern int SHGetPropertyStoreForWindow(IntPtr hwnd, ref Guid riid, [MarshalAs(UnmanagedType.Interface)] out IPropertyStore ps);
@@ -315,6 +318,33 @@ public class NimboWin {
             SHAppBarMessage(10, ref d);
         }
     }
+
+    // ---- Escritorio remoto ----
+    public static bool IsRemoteSession() { return GetSystemMetrics(0x1000) != 0; }   // SM_REMOTESESSION
+
+    // ---- Reservar espacio para el dock (como la barra de tareas) ----
+    // Las coordenadas llegan en píxeles físicos; el hilo se marca "consciente de DPI" para que Windows no las escale.
+    static readonly HashSet<long> appBars = new HashSet<long>();
+    static void DpiAware() { try { SetThreadDpiAwarenessContext(new IntPtr(-4)); } catch { } }
+    public static int[] AppBarSet(long hwnd, int left, int top, int right, int bottom) {
+        DpiAware();
+        var d = new APPBARDATA(); d.cbSize = Marshal.SizeOf(d); d.hWnd = new IntPtr(hwnd);
+        if (!appBars.Contains(hwnd)) { d.msg = 0x8000 + 0x4E4; SHAppBarMessage(0, ref d); appBars.Add(hwnd); }   // ABM_NEW
+        d.edge = 3;                                                     // ABE_BOTTOM
+        d.rc = new RECT { L = left, T = top, R = right, B = bottom };
+        SHAppBarMessage(2, ref d);                                      // ABM_QUERYPOS
+        int h = bottom - top;
+        d.rc.T = d.rc.B - h;
+        SHAppBarMessage(3, ref d);                                      // ABM_SETPOS
+        return new int[] { d.rc.L, d.rc.T, d.rc.R, d.rc.B };
+    }
+    public static void AppBarRemove(long hwnd) {
+        if (!appBars.Contains(hwnd)) return;
+        var d = new APPBARDATA(); d.cbSize = Marshal.SizeOf(d); d.hWnd = new IntPtr(hwnd);
+        SHAppBarMessage(1, ref d);                                      // ABM_REMOVE
+        appBars.Remove(hwnd);
+    }
+    public static void AppBarRemoveAll() { foreach (var h in new List<long>(appBars)) AppBarRemove(h); }
 
     // ---- Papelera ----
     public static long[] RecycleBin() { var i = new SHQUERYRBINFO(); i.cbSize = Marshal.SizeOf(i); SHQueryRecycleBin(null, ref i); return new long[] { i.i64NumItems, i.i64Size }; }

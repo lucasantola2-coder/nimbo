@@ -377,3 +377,24 @@ h3.sub { font-size: 12px; text-transform: uppercase; letter-spacing: .6px; color
 .tile-ring .ring-ic.claude { color: var(--claude); left: 17px; top: 17px; }
 .tile-text-col { display: flex; flex-direction: column; line-height: 1.15; text-align: left; }
 .tile-text-col b { font-size: 14px; } .tile-text-col small { font-size: 11px; color: var(--muted); }
+
+/* ------------------------------------------------ dock compacto (cuando no entra en la pantalla) */
+.dock.compact { gap: 0; padding: 0 6px; }
+.dock.compact .tile { padding: 0 6px; min-width: 38px; }
+.dock.compact .tile-icon { width: 38px; padding: 0; }
+.dock.compact .app { width: 40px; }
+.dock.compact .tile-search { width: 38px; padding: 0; justify-content: center; background: none; box-shadow: none; }
+.dock.compact .tile-search span { display: none; }
+.dock.compact .tile-text small, .dock.compact .tile-text-col small { display: none; }
+.dock.compact .music-txt { max-width: 92px; }
+.dock.compact .tile-stock { width: 140px; }
+.dock.compact .tile-stock .mspark { display: none; }
+.dock.compact .tile-stats { width: 58px; }
+.dock.compact .tile-net { width: 78px; }
+.dock.compact .slot.sep-before::before { margin: 0 3px; }
+.tile.more { font-size: 20px; letter-spacing: 1px; }
+.more-grid { display: flex; flex-wrap: wrap; gap: 8px; margin-bottom: 10px; }
+.more-item { display: flex; flex-direction: column; align-items: center; gap: 2px; padding: 6px; border-radius: 12px; background: var(--surface); min-width: 80px; }
+
+/* ------------------------------------------------ estilo oscuro: más contraste (también se usa en escritorio remoto) */
+.style-dark { --dock-bg: #18181c; --panel-bg: #1c1c21; --edge: rgba(255, 255, 255, .10); --muted: rgba(244, 244, 246, .66); }

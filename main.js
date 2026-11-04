@@ -50,8 +50,10 @@ const timers = {
 
 // ---------------------------------------------------------------- estilo / ventanas
 function winBuild() { const [, , b] = os.release().split('.').map(Number); return b || 0; }
+let remoteSession = false;   // conectado por escritorio remoto: sin transparencias
 function effectiveStyle() {
   const s = store.settings.style;
+  if (remoteSession && (s === 'acrylic' || s === 'glass')) return 'dark';
   if (s === 'acrylic' && !(isWin && winBuild() >= 22621)) return 'glass';
   return s;
 }
@@ -85,6 +87,7 @@ function createWindows() {
   dockWin.loadFile(path.join(__dirname, 'renderer', 'index.html'), { query: { view: 'dock', style } });
   dockWin.once('ready-to-show', () => {
     dockWin.showInactive();
+    setTimeout(updateAppBar, 300);
     if (style === 'acrylic') roundCorners(dockWin);
   });
   const thisDock = dockWin;
@@ -125,6 +128,7 @@ function roundCorners(win) {
 
 function recreateWindows() {
   hidePanel();
+  if (isWin) helper.safe('appbarRemove');
   hidePreview();
   for (const w of [dockWin, panelWin, previewWin]) if (w && !w.isDestroyed()) w.destroy();
   panelReady = false;
@@ -160,6 +164,8 @@ function snapshot() {
     live, timers,
     now: Date.now(),
     version: VERSION,
+    dockMax: primaryBounds().width - 2 * MARGIN,
+    remote: remoteSession,
     searchShortcut,
     update: updater ? updater.last : null,
   };
@@ -185,6 +191,12 @@ async function pollWindows() {
   if (!r) return;
   const ownPid = process.pid;
   live.groups = apps.setWindows((r.windows || []).filter((w) => w.pid !== ownPid));
+  if (typeof r.remote === 'boolean' && r.remote !== remoteSession) {
+    const before = effectiveStyle();
+    remoteSession = r.remote;
+    log(remoteSession ? 'escritorio remoto detectado: fondo sólido' : 'sesión local: estilo normal');
+    if (effectiveStyle() !== before) setTimeout(recreateWindows, 50);
+  }
   if (preview.key) updatePreview();
   // ocultar el dock si hay algo a pantalla completa
   const shouldHide = !!(store.settings.hideOnFullscreen && r.fullscreen && !(dockWin?.isFocused() || panelWin?.isFocused()));
@@ -465,6 +477,7 @@ const actions = {
     if (patch.githubUser !== undefined) tickServices('github');
     if (patch.watchlists) tickServices('stocks');
     if (patch.claudePlan) planTick(true);
+    if ('reserveSpace' in patch) updateAppBar();
     if (patch.widgets) { tickServices(); pollSlowSystem(); pollMusic(); }
     broadcast();
   },
@@ -582,6 +595,19 @@ ipcMain.on('panel:size', (_e, { width, height }) => {
   if (panelWin.isVisible()) positionPanel(lastPanelSize.width, lastPanelSize.height);
   else showPanel(lastPanelSize.width, lastPanelSize.height);
 });
+
+// ---------------------------------------------------------------- reservar espacio en la pantalla (como la barra de tareas)
+async function updateAppBar() {
+  if (!isWin || !dockWin || dockWin.isDestroyed()) return;
+  if (store.settings.reserveSpace === false) { await helper.safe('appbarRemove'); return; }
+  const b = primaryBounds();
+  const h = DOCK_H + 2 * MARGIN;
+  const phys = screen.dipToScreenRect(dockWin, { x: b.x, y: b.y + b.height - h, width: b.width, height: h });
+  const buf = dockWin.getNativeWindowHandle();
+  const hwnd = buf.length >= 8 ? Number(buf.readBigInt64LE(0)) : buf.readInt32LE(0);
+  const r = await helper.safe('appbar', { hwnd, left: phys.x, top: phys.y, right: phys.x + phys.width, bottom: phys.y + phys.height });
+  if (r) log('espacio reservado para el dock', r.rect);
+}
 
 // ---------------------------------------------------------------- anclar apps en Nimbo
 async function pinApp(id, name) {
@@ -730,6 +756,7 @@ async function quit() {
   if (quitting) return;
   quitting = true;
   try { globalShortcut.unregisterAll(); } catch {}
+  if (isWin) await helper.safe('appbarRemove');
   if (isWin) await helper.safe('taskbar', { mode: 'none' });
   helper.stop(); mediaHelper.stop();
   cleaned = true;
@@ -765,7 +792,8 @@ app.whenReady().then(async () => {
   if (isWin) { helper.start(); mediaHelper.start(); }
   createWindows();
   createTray();
-  screen.on('display-metrics-changed', () => { if (dockWin) dockWin.setBounds(dockBounds()); });
+  screen.on('display-metrics-changed', () => { if (dockWin) dockWin.setBounds(dockBounds()); setTimeout(updateAppBar, 500); broadcast(); });
+  setInterval(updateAppBar, 120e3);   // por si el Explorador de Windows se reinicia
   screen.on('display-added', () => { if (dockWin) dockWin.setBounds(dockBounds()); });
   screen.on('display-removed', () => { if (dockWin) dockWin.setBounds(dockBounds()); });
 
