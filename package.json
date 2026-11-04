@@ -1,0 +1,51 @@
+{
+  "name": "nimbo",
+  "productName": "Nimbo",
+  "version": "1.2.1",
+  "description": "Dock inteligente para Windows con widgets en vivo",
+  "main": "loader.js",
+  "author": "Lucas",
+  "license": "MIT",
+  "scripts": {
+    "start": "electron .",
+    "dist": "electron-builder --win nsis portable",
+    "dist:zip": "electron-builder --win zip",
+    "make-update": "node scripts/make-update.js"
+  },
+  "dependencies": {
+    "node-ical": "0.20.1"
+  },
+  "devDependencies": {
+    "electron": "45.2.2",
+    "electron-builder": "26.18.0"
+  },
+  "build": {
+    "appId": "xyz.nimbo.dock",
+    "productName": "Nimbo",
+    "files": [
+      "loader.js",
+      "main.js",
+      "preload.js",
+      "src/**/*",
+      "renderer/**/*",
+      "assets/**/*",
+      "package.json"
+    ],
+    "asarUnpack": [
+      "src/helper.ps1",
+      "src/NimboWin.cs"
+    ],
+    "win": {
+      "icon": "assets/icon.png",
+      "target": [
+        "nsis",
+        "portable"
+      ]
+    },
+    "nsis": {
+      "oneClick": false,
+      "allowToChangeInstallationDirectory": true,
+      "shortcutName": "Nimbo"
+    }
+  }
+}
