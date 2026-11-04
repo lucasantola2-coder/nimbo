@@ -296,3 +296,50 @@ form textarea + .btn { margin-top: 6px; }
 .pv-thumb { height: 134px; border-radius: 6px; overflow: hidden; background: rgba(0, 0, 0, .25); display: grid; place-items: center; }
 .pv-thumb img { max-width: 100%; max-height: 100%; object-fit: contain; display: block; }
 .pv-ph { display: flex; flex-direction: column; align-items: center; gap: 6px; }
+
+/* ------------------------------------------------ bolsa */
+:root { --up: #3ccf8e; --down: #ff6b6b; }
+.style-light { --up: #13955a; --down: #d63b3b; }
+.tile-stock { width: 196px; justify-content: flex-start; padding: 0 10px; overflow: hidden; }
+.tk { display: flex; align-items: center; gap: 8px; width: 100%; animation: tick-in .45s ease-out; }
+@keyframes tick-in { from { opacity: 0; transform: translateY(10px); } to { opacity: 1; transform: none; } }
+.tk-txt { display: flex; flex-direction: column; line-height: 1.15; min-width: 52px; text-align: left; }
+.tk-txt b { font-size: 13px; font-weight: 700; letter-spacing: .2px; }
+.tk-txt small { font-size: 11px; color: var(--muted); font-variant-numeric: tabular-nums; }
+.tk-pct { white-space: nowrap; flex: none; margin-left: auto; font-size: 12.5px; font-weight: 700; font-variant-numeric: tabular-nums; padding: 3px 7px; border-radius: 7px; }
+.tile-stock.up .tk-pct { color: var(--up); background: color-mix(in srgb, var(--up) 16%, transparent); }
+.tile-stock.down .tk-pct { color: var(--down); background: color-mix(in srgb, var(--down) 16%, transparent); }
+.mspark { flex: none; overflow: visible; }
+.mspark polyline { fill: none; stroke-width: 1.6; stroke-linejoin: round; stroke-linecap: round; }
+.mspark.up polyline { stroke: var(--up); } .mspark.down polyline { stroke: var(--down); }
+.chip.on { background: var(--accent); color: #fff; box-shadow: none; }
+.chip.icon-only { width: 30px; }
+.st-list { display: flex; flex-direction: column; margin-bottom: 10px; }
+.st-row { display: grid; grid-template-columns: 1fr 70px 92px 66px 26px; align-items: center; gap: 8px; padding: 7px 4px; border-bottom: 1px solid var(--line); }
+.st-row:last-child { border-bottom: 0; }
+.st-name { display: flex; flex-direction: column; min-width: 0; }
+.st-px { text-align: right; font-variant-numeric: tabular-nums; }
+.st-pct { text-align: center; font-weight: 700; font-variant-numeric: tabular-nums; border-radius: 7px; padding: 3px 0; font-size: 12px; }
+.st-pct.up { color: var(--up); background: color-mix(in srgb, var(--up) 15%, transparent); }
+.st-pct.down { color: var(--down); background: color-mix(in srgb, var(--down) 15%, transparent); }
+.st-del { width: 24px; height: 24px; opacity: 0; } .st-row:hover .st-del { opacity: 1; }
+h3.sub { font-size: 12px; text-transform: uppercase; letter-spacing: .6px; color: var(--muted); margin: 0 0 8px; font-weight: 600; }
+.mini-num { width: 64px !important; height: 28px !important; text-align: center; }
+.target-form { margin-top: 8px; } .target-form input[name=sym] { width: 90px; flex: none; } .target-form select { width: 96px; flex: none; }
+
+/* ------------------------------------------------ Claude en vivo */
+.ic.spin { animation: spin 2.4s linear infinite; }
+@keyframes spin { to { transform: rotate(360deg); } }
+.tile.waiting { background: color-mix(in srgb, var(--warn) 22%, transparent); }
+.cc-sessions { display: flex; flex-direction: column; gap: 6px; margin-bottom: 10px; }
+.cc-s { display: flex; gap: 10px; padding: 8px 10px; border-radius: 10px; background: var(--surface); }
+.cc-dot { width: 9px; height: 9px; border-radius: 50%; margin-top: 5px; flex: none; background: var(--good); }
+.cc-s.working .cc-dot { background: var(--claude); animation: pulse 1.2s ease-in-out infinite; }
+.cc-s.waiting .cc-dot { background: var(--warn); animation: pulse .8s ease-in-out infinite; }
+@keyframes pulse { 50% { opacity: .35; transform: scale(.8); } }
+.cc-body { display: flex; flex-direction: column; min-width: 0; gap: 1px; }
+.cc-txt { display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
+
+/* ------------------------------------------------ avisos */
+.info { display: flex; flex-direction: column; gap: 8px; align-items: flex-start; background: color-mix(in srgb, var(--accent) 12%, transparent); border-radius: 12px; padding: 12px; margin-top: 6px; }
+.info b { display: flex; align-items: center; gap: 6px; }

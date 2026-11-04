@@ -5,7 +5,7 @@ const path = require('path');
 const { app, safeStorage } = require('electron');
 
 const WIDGETS = [
-  'start', 'search', 'taskview', 'apps', 'music', 'weather', 'claudeCode', 'github', 'stats', 'network',
+  'start', 'search', 'taskview', 'apps', 'stocks', 'music', 'weather', 'claudeCode', 'github', 'stats', 'network',
   'todos', 'notes', 'timer', 'calendar', 'pomodoro', 'anthropic', 'openai', 'storage', 'recycle',
   'battery', 'system', 'clock', 'desktop',
 ];
@@ -26,6 +26,10 @@ const DEFAULTS = {
     pomodoroWork: 25,
     pomodoroBreak: 5,
     autoUpdate: true,
+    claudeNotify: true,
+    watchlists: [{ name: 'Mi lista', symbols: ['SPY', 'QQQ', 'AAPL', 'NVDA', 'AMD', 'INTC', 'MSFT', 'TSLA', 'MELI'] }],
+    stockAlertPct: 3,
+    stockTargets: [],          // { id, symbol, op: '>' | '<', price }
     updateUrl: '',
     widgets: WIDGETS.map((id) => ({ id, enabled: !OFF_BY_DEFAULT.includes(id) })),
   },
@@ -62,6 +66,14 @@ class Store {
         const wasOn = new Set((raw.settings?.widgets || []).filter((w) => w.enabled).map((w) => w.id));
         this.state.settings.widgets = WIDGETS.map((id) => ({ id, enabled: !OFF_BY_DEFAULT.includes(id) && (wasOn.has(id) || ['search', 'taskview', 'system', 'desktop', 'notes', 'network', 'stats', 'github', 'claudeCode'].includes(id) || !raw.settings?.widgets) }));
         this.state.settings.migrated110 = true;
+      }
+      // v1.3.0: nuevo widget de bolsa, activado y al lado de las apps
+      if (!raw.settings?.migrated130) {
+        const ws = this.state.settings.widgets.filter((w) => w.id !== 'stocks');
+        const at = ws.findIndex((w) => w.id === 'apps');
+        ws.splice(at + 1, 0, { id: 'stocks', enabled: true });
+        this.state.settings.widgets = ws;
+        this.state.settings.migrated130 = true;
       }
     } catch { /* primera vez */ }
     try {

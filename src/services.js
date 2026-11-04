@@ -296,4 +296,48 @@ function streak(days) {
   return n;
 }
 
-module.exports = { geocode, weather, calendar, claudeCode, anthropicCost, openaiCost, github };
+// ---------------- Bolsa (Yahoo Finance, sin clave) ----------------
+const YAHOO_UA = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/130.0 Safari/537.36';
+
+function parseChart(sym, j) {
+  const r = j?.chart?.result?.[0];
+  if (!r) throw new Error(j?.chart?.error?.description || 'sin datos');
+  const m = r.meta || {};
+  const closes = (r.indicators?.quote?.[0]?.close || []).filter((v) => v != null);
+  const price = m.regularMarketPrice ?? closes[closes.length - 1];
+  const prev = m.chartPreviousClose ?? m.previousClose ?? closes[0];
+  const now = Date.now() / 1000;
+  const reg = m.currentTradingPeriod?.regular;
+  return {
+    symbol: m.symbol || sym, name: m.shortName || m.longName || sym, currency: m.currency || '',
+    price, prev, change: price - prev, pct: prev ? ((price - prev) / prev) * 100 : 0,
+    open: reg ? now >= reg.start && now < reg.end : null,
+    time: (m.regularMarketTime || 0) * 1000,
+    spark: closes.filter((_, i) => i % Math.max(1, Math.floor(closes.length / 48)) === 0),
+  };
+}
+
+async function quote(sym) {
+  let lastErr;
+  for (const host of ['query1', 'query2']) {
+    try {
+      const url = `https://${host}.finance.yahoo.com/v8/finance/chart/${encodeURIComponent(sym)}?range=1d&interval=5m&includePrePost=false`;
+      return parseChart(sym, await getJSON(url, { headers: { 'User-Agent': YAHOO_UA, Accept: 'application/json' } }));
+    } catch (e) { lastErr = e; }
+  }
+  return { symbol: sym, error: lastErr?.message || 'error' };
+}
+
+async function quotes(symbols) {
+  const list = [...new Set(symbols.map((s) => s.trim().toUpperCase()).filter(Boolean))];
+  const out = {};
+  const queue = list.slice();
+  const workers = Array.from({ length: Math.min(5, queue.length) }, async () => {
+    while (queue.length) { const s = queue.shift(); out[s] = await quote(s); }
+  });
+  await Promise.all(workers);
+  const failed = list.filter((s) => out[s]?.error);
+  return { quotes: out, at: Date.now(), error: failed.length === list.length && list.length ? 'No se pudo conectar con Yahoo Finance' : null };
+}
+
+module.exports = { geocode, weather, calendar, claudeCode, anthropicCost, openaiCost, github, quotes, parseChart };

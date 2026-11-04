@@ -15,7 +15,8 @@ Solo viajan `main.js`, `preload.js`, `loader.js`, `package.json`, `src/`, `rende
 - `main.js`: ventanas (dock, panel, vista previa), sondeos, automatizaciones, IPC.
 - `src/helper.ps1` + `src/NimboWin.cs`: puente nativo de Windows vía PowerShell 5.1. El C# debe compilar como **C# 5** (`mcs -langversion:5 -r:System.Drawing.dll src/NimboWin.cs`).
 - `src/apps.js`: ancladas, agrupación por AppUserModelID (perfiles de Chrome/Edge), íconos del shell y lista del buscador.
-- `src/services.js`: clima (Open-Meteo), calendario iCal, Claude Code (logs locales), costos de API y GitHub.
+- `src/services.js`: clima (Open-Meteo), calendario iCal, Claude Code (logs locales), costos de API, GitHub y bolsa (Yahoo Finance, endpoint v8 chart).
+- `src/claudeWatch.js`: sigue en vivo las sesiones de Claude Code y avisa cuando terminan o esperan aprobación.
 - `renderer/`: interfaz; `widgets.js` define cada widget.
 
 ## Probar sin Windows

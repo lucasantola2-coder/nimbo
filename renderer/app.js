@@ -1,5 +1,5 @@
 // Lógica de la interfaz: pinta el dock o el panel según ?view=dock|panel
-/* global WIDGET_DEFS, ICONS, SEARCH_EXTRAS, iconImg, icon, esc, attr */
+/* global WIDGET_DEFS, ICONS, SEARCH_EXTRAS, LOCAL_ACTIONS, LOCAL, iconImg, icon, esc, attr */
 const params = new URLSearchParams(location.search);
 const VIEW = params.get('view') || 'dock';
 const STYLE = params.get('style') || 'glass';
@@ -105,6 +105,12 @@ root.addEventListener('click', async (e) => {
     [list[i], list[j]] = [list[j], list[i]];
     return api.action('settings', { patch: { widgets: list } });
   }
+  if (t.dataset.act && LOCAL_ACTIONS[t.dataset.act]) {
+    const patch = LOCAL_ACTIONS[t.dataset.act](argsOf(t), S);
+    if (patch) { Object.assign(S.settings, patch); api.action('settings', { patch }); }
+    renderPanel(true);
+    return;
+  }
   if (t.dataset.act) return api.action(t.dataset.act, argsOf(t));
   if (t.dataset.todoDel) return saveTodos(S.data.todos.filter((x) => x.id !== t.dataset.todoDel));
   if (t.dataset.todoClear != null) return saveTodos(S.data.todos.filter((x) => !x.done));
@@ -176,6 +182,30 @@ root.addEventListener('submit', async (e) => {
       await api.action('settings', { patch: { calendars: urls } });
       document.activeElement?.blur(); renderPanel(true);
       return;
+    }
+    case 'addSymbol': {
+      const syms = String(fd.get('sym') || '').toUpperCase().split(/[\s,;]+/).map((x) => x.trim()).filter((x) => /^[A-Z0-9.^=\-]{1,15}$/.test(x));
+      if (!syms.length) return;
+      const tab = Math.min(LOCAL.stocksTab, S.settings.watchlists.length - 1);
+      const watchlists = S.settings.watchlists.map((l, i) => (i === tab ? { ...l, symbols: [...new Set([...l.symbols, ...syms])] } : l));
+      S.settings.watchlists = watchlists; f.reset(); renderPanel(true);
+      return api.action('settings', { patch: { watchlists } });
+    }
+    case 'newList': {
+      const name = String(fd.get('name') || '').trim(); if (!name) return;
+      const watchlists = [...S.settings.watchlists, { name, symbols: [] }];
+      LOCAL.stocksTab = watchlists.length - 1; LOCAL.newList = false;
+      S.settings.watchlists = watchlists; renderPanel(true);
+      return api.action('settings', { patch: { watchlists } });
+    }
+    case 'addTarget': {
+      const symbol = String(fd.get('sym') || '').trim().toUpperCase(); const price = parseFloat(fd.get('price'));
+      if (!symbol || !(price > 0)) return;
+      const stockTargets = [...(S.settings.stockTargets || []), { id: Math.random().toString(36).slice(2, 9), symbol, op: fd.get('op') === '<' ? '<' : '>', price }];
+      const patch = { stockTargets };
+      if (!S.settings.watchlists.some((l) => l.symbols.includes(symbol))) patch.watchlists = S.settings.watchlists.map((l, i) => (i === 0 ? { ...l, symbols: [...l.symbols, symbol] } : l));
+      Object.assign(S.settings, patch); f.reset(); renderPanel(true);
+      return api.action('settings', { patch });
     }
     case 'githubUser': {
       await api.action('settings', { patch: { githubUser: String(fd.get('user') || '').trim() } });

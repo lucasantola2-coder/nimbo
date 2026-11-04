@@ -8,6 +8,7 @@ const { Store } = require('./src/store');
 const services = require('./src/services');
 const { createApps } = require('./src/apps');
 const { createUpdater } = require('./src/updater');
+const { createClaudeWatch } = require('./src/claudeWatch');
 const VERSION = global.NIMBO?.version || VERSION;
 
 // Si ya hay un Nimbo abierto, le pedimos que se cierre si es otra copia (p. ej. una versión vieja)
@@ -39,7 +40,7 @@ let hiddenForFullscreen = false;
 
 const live = {
   groups: [], stats: null, net: null, drives: null, recycle: null,
-  music: null, weather: null, calendar: null, claudeCode: null, anthropic: null, openai: null, github: null,
+  music: null, weather: null, calendar: null, claudeCode: null, claudeSessions: [], stocks: null, anthropic: null, openai: null, github: null,
 };
 const timers = {
   pomodoro: { phase: 'work', running: false, endsAt: 0, remaining: 0, done: 0 },
@@ -257,8 +258,9 @@ const refreshers = {
   anthropic: () => runService('anthropic', () => services.anthropicCost(store.secret('anthropicAdminKey'))),
   openai: () => runService('openai', () => services.openaiCost(store.secret('openaiAdminKey'))),
   github: () => runService('github', () => services.github(store.settings.githubUser, store.secret('githubToken'))),
+  stocks: () => runService('stocks', () => services.quotes(allSymbols())),
 };
-const intervals = { weather: 20, calendar: 15, claudeCode: 1, anthropic: 15, openai: 15, github: 5 }; // minutos
+const intervals = { weather: 20, calendar: 15, claudeCode: 1, anthropic: 15, openai: 15, github: 5, stocks: 1 }; // minutos
 const lastRun = {};
 function tickServices(force) {
   const now = Date.now();
@@ -268,13 +270,66 @@ function tickServices(force) {
   }
 }
 
+function allSymbols() { return [...new Set(store.settings.watchlists.flatMap((l) => l.symbols))]; }
+
+// ---------------------------------------------------------------- Claude Code en vivo
+let claudeWatch = null;
+function setupClaudeWatch() {
+  claudeWatch = createClaudeWatch({
+    log,
+    onChange: () => { live.claudeSessions = claudeWatch.list(); broadcast(); },
+    onEvent: (e) => {
+      log('claude:', e.kind, e.project);
+      if (!store.settings.claudeNotify) return;
+      const focusClaude = () => {
+        const g = apps.groups.find((x) => x.windows.some((w) => w.title.includes(e.project))) ||
+          apps.groups.find((x) => /claude|windowsterminal|code/i.test(x.exe || '') && x.windows.length);
+        if (g) helper.safe('focus', { hwnd: g.windows[0].hwnd });
+      };
+      if (e.kind === 'done') notify(`Claude terminó · ${e.project}`, (e.text || 'Respuesta lista').slice(0, 180), focusClaude);
+      if (e.kind === 'waiting') notify(`Claude te espera · ${e.project}`, `Está esperando para usar «${e.tool}». Puede que necesite tu aprobación.`, focusClaude);
+    },
+  });
+  setInterval(() => { if (enabled('claudeCode')) { try { claudeWatch.tick(); } catch (err) { log('claude watch', err.message); } } }, 2000);
+}
+
+// ---------------------------------------------------------------- alertas de bolsa
+function stockAlerts() {
+  const q = live.stocks?.quotes; if (!q || !enabled('stocks')) return;
+  const day = new Date().toDateString();
+  const th = Math.max(0.5, Number(store.settings.stockAlertPct) || 3);
+  for (const sym of allSymbols()) {
+    const x = q[sym]; if (!x || x.error || x.open === false) continue;
+    const level = Math.floor(Math.abs(x.pct) / th);
+    if (level >= 1) {
+      const k = `mv:${day}:${sym}:${Math.sign(x.pct)}:${level}`;
+      if (!notified.has(k)) { notified.add(k); notify(`${sym} ${x.pct > 0 ? '▲' : '▼'} ${x.pct.toFixed(1).replace('.', ',')}% hoy`, `${x.name}: ${x.price.toFixed(2)} ${x.currency}`); }
+    }
+  }
+  const targets = store.settings.stockTargets || [];
+  const hit = targets.filter((t) => { const x = q[t.symbol]; return x && !x.error && (t.op === '>' ? x.price >= t.price : x.price <= t.price); });
+  if (hit.length) {
+    for (const t of hit) notify(`${t.symbol} llegó a ${t.price}`, `${t.op === '>' ? 'Subió' : 'Bajó'} a ${q[t.symbol].price.toFixed(2)} ${q[t.symbol].currency}`);
+    store.setSettings({ stockTargets: targets.filter((t) => !hit.includes(t)) });
+    broadcast();
+  }
+}
+
 // ---------------------------------------------------------------- automatizaciones
 const notified = new Set();
-function notify(title, body) {
-  if (Notification.isSupported()) new Notification({ title, body, silent: false }).show();
+const liveNotifications = new Set();
+function notify(title, body, onClick) {
+  if (!Notification.isSupported()) return;
+  const n = new Notification({ title, body, silent: false });
+  liveNotifications.add(n);                      // guardar referencia: si no, el clic se pierde
+  n.on('close', () => liveNotifications.delete(n));
+  n.on('click', () => { liveNotifications.delete(n); onClick?.(); });
+  n.show();
 }
+let lastStockCheck = 0;
 async function automations() {
   const now = Date.now();
+  if (live.stocks?.at && live.stocks.at !== lastStockCheck) { lastStockCheck = live.stocks.at; stockAlerts(); }
   // Reuniones: aviso 5 min antes y pausa de la música 1 min antes
   for (const ev of live.calendar?.events || []) {
     if (ev.allDay) continue;
@@ -373,6 +428,7 @@ const actions = {
     if (patch.style && patch.style !== before.style) { setTimeout(recreateWindows, 50); return; }
     if (patch.calendars) tickServices('calendar');
     if (patch.githubUser !== undefined) tickServices('github');
+    if (patch.watchlists) tickServices('stocks');
     if (patch.widgets) { tickServices(); pollSlowSystem(); pollMusic(); }
     broadcast();
   },
@@ -670,6 +726,7 @@ app.whenReady().then(async () => {
   setTimeout(() => apps.list(), 8000);        // precargar la lista del buscador
   registerShortcut();
   setupUpdater();
+  setupClaudeWatch();
   setInterval(pollWindows, 1200);
   setInterval(pollSystem, 2000);
   setInterval(pollSlowSystem, 60e3);

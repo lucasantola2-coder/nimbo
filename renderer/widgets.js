@@ -263,6 +263,50 @@ const WIDGET_DEFS = {
     },
   },
 
+  stocks: {
+    name: 'Bolsa', desc: 'Tus listas de Yahoo Finance pasando en vivo, con alertas', width: 420, keepWhileTyping: true,
+    tile: ({ s, now }) => {
+      const q = s.live.stocks?.quotes || {};
+      const list = allStockSymbols(s).filter((x) => q[x] && !q[x].error);
+      if (!list.length) return `<button class="tile tile-text" data-panel="stocks" title="Bolsa">${icon('chart', 18)}<span><b>Bolsa</b><small>${s.live.stocks?.error ? 'sin conexión' : 'cargando…'}</small></span></button>`;
+      const i = Math.floor(now.getTime() / 4000) % list.length;
+      const x = q[list[i]];
+      const up = x.pct >= 0;
+      return `<button class="tile tile-stock ${up ? 'up' : 'down'}" data-panel="stocks"><span class="tk" data-i="${i}">
+        <span class="tk-txt"><b>${esc(x.symbol)}</b><small>${fmtPx(x.price)}</small></span>${miniSpark(x.spark, up)}
+        <span class="tk-pct">${up ? '▲' : '▼'} ${fmtPct(x.pct)}</span></span></button>`;
+    },
+    panel: ({ s }) => {
+      const lists = s.settings.watchlists;
+      const tab = Math.min(LOCAL.stocksTab || 0, lists.length - 1);
+      const L = lists[tab] || { name: '', symbols: [] };
+      const q = s.live.stocks?.quotes || {};
+      const st = s.live.stocks;
+      const tabs = lists.map((l, i) => btn('_stocksTab', { i }, esc(l.name), `chip ${i === tab ? 'on' : ''}`)).join('') + btn('_newListForm', {}, icon('plus', 14), 'chip icon-only', 'Nueva lista');
+      const rows = L.symbols.map((sym) => {
+        const x = q[sym];
+        if (!x) return `<div class="st-row"><b>${esc(sym)}</b><span class="muted small">cargando…</span></div>`;
+        if (x.error) return `<div class="st-row"><span class="st-name"><b>${esc(sym)}</b><small class="muted">no encontrado</small></span><span></span><span></span>${btn('_stockDel', { sym }, icon('x', 13), 'ghost icon-only st-del', 'Quitar')}</div>`;
+        const up = x.pct >= 0;
+        return `<div class="st-row"><span class="st-name"><b>${esc(x.symbol)}</b><small class="muted ellipsis">${esc(x.name)}</small></span>
+          ${miniSpark(x.spark, up, 70, 24)}<span class="st-px">${fmtPx(x.price)}<small class="muted"> ${esc(x.currency)}</small></span>
+          <span class="st-pct ${up ? 'up' : 'down'}">${up ? '+' : '−'}${fmtPct(x.pct)}</span>${btn('_stockDel', { sym }, icon('x', 13), 'ghost icon-only st-del', 'Quitar')}</div>`;
+      }).join('');
+      const targets = (s.settings.stockTargets || []).map((t) => `<div class="row between small"><span>${esc(t.symbol)} ${t.op === '>' ? 'sube a' : 'baja a'} <b>${t.price}</b></span>${btn('_targetDel', { id: t.id }, icon('x', 12), 'ghost icon-only')}</div>`).join('');
+      return head('Bolsa', refreshBtn('stocks')) + errorBox(st?.error) +
+        `<div class="chips">${tabs}</div>
+        ${LOCAL.newList ? `<form class="row add" data-form="newList"><input name="name" placeholder="Nombre de la lista (p. ej. Tecnología)" maxlength="30"><button class="btn primary" type="submit">Crear</button></form>` : ''}
+        <div class="st-list">${rows || empty('Esta lista está vacía. Agrega un símbolo abajo.')}</div>
+        <form class="row add" data-form="addSymbol"><input name="sym" placeholder="Agregar símbolos: AAPL, GGAL.BA, BTC-USD…" autocomplete="off"><button class="btn" type="submit">${icon('plus', 15)}</button></form>
+        <div class="row between small">${lists.length > 1 ? btn('_listDel', { i: tab }, 'Borrar esta lista', 'ghost small') : '<span></span>'}<span class="muted">${st?.at ? 'Actualizado ' + fmtTime(new Date(st.at)) : ''}</span></div>
+        <div class="sep"></div><h3 class="sub">Alertas</h3>
+        <div class="row gap small"><span>Avisarme si algo se mueve más de</span><input type="number" min="1" max="50" step="0.5" class="mini-num" data-setting-num="stockAlertPct" value="${s.settings.stockAlertPct}"><span>% en el día</span></div>
+        <form class="row add target-form" data-form="addTarget"><input name="sym" placeholder="Símbolo" maxlength="12"><select name="op"><option value=">">sube a</option><option value="<">baja a</option></select><input name="price" type="number" step="any" placeholder="Precio"><button class="btn" type="submit">Avisarme</button></form>
+        ${targets}
+        <small class="muted">Datos de Yahoo Finance; algunos mercados tienen 15 min de demora.</small>`;
+    },
+  },
+
   music: {
     name: 'Música', desc: 'Lo que suena en Spotify, YouTube, etc. con controles', width: 330,
     tile: ({ s }) => {
@@ -316,13 +360,25 @@ const WIDGET_DEFS = {
     tile: ({ s, now }) => {
       const c = s.live.claudeCode;
       const a = c?.active;
-      if (!a) return `<button class="tile tile-icon" data-panel="claudeCode" title="Claude Code">${icon('asterisk')}</button>`;
+      const ses = s.live.claudeSessions || [];
+      const working = ses.some((x) => x.status === 'working'), waiting = ses.some((x) => x.status === 'waiting');
+      const live = waiting ? 'waiting' : working ? 'working' : '';
+      if (!a) return `<button class="tile tile-icon ${live}" data-panel="claudeCode" title="Claude Code">${icon('asterisk', 20, 'claude' + (live ? ' spin' : ''))}</button>`;
       const pct = c.maxBlock ? a.tokens / c.maxBlock : 0;
-      return `<button class="tile tile-text" data-panel="claudeCode" title="Claude Code: bloque actual">${icon('asterisk', 18, 'claude')}<span><b>${fmtTokens(a.tokens)}</b><small>${fmtDur(a.resetsAt - now)}</small></span>${bar(pct, 'vert claude')}</button>`;
+      return `<button class="tile tile-text ${live}" data-panel="claudeCode" title="Claude Code: bloque actual">${icon('asterisk', 18, 'claude' + (live ? ' spin' : ''))}<span><b>${fmtTokens(a.tokens)}</b><small>${waiting ? 'te espera' : working ? 'trabajando…' : fmtDur(a.resetsAt - now)}</small></span>${bar(pct, 'vert claude')}</button>`;
     },
     panel: ({ s, now }) => {
       const c = s.live.claudeCode;
-      let html = head('Claude Code', refreshBtn('claudeCode')) + errorBox(c?.error);
+      let html = head('Claude Code', refreshBtn('claudeCode'));
+      const ses = s.live.claudeSessions || [];
+      if (ses.length) {
+        html += '<div class="cc-sessions">' + ses.map((x) => {
+          const st = x.status === 'waiting' ? 'Esperando tu aprobación' : x.status === 'working' ? (x.tool ? `Trabajando · usando ${esc(x.tool)}` : 'Escribiendo la respuesta…') : `Terminó ${x.doneAt ? 'hace ' + fmtDur(now - x.doneAt) : ''}`;
+          return `<div class="cc-s ${x.status}"><span class="cc-dot"></span><span class="cc-body"><b class="ellipsis">${esc(x.project)}</b><small>${st}</small>${x.text ? `<small class="muted cc-txt">${esc(x.text)}</small>` : ''}</span></div>`;
+        }).join('') + '</div>';
+      }
+      html += `<label class="switch"><input type="checkbox" data-setting="claudeNotify" ${s.settings.claudeNotify ? 'checked' : ''}><span>Avisarme cuando Claude termine o me necesite</span></label><div class="sep"></div>`;
+      html += errorBox(c?.error);
       if (!c || c.error) return html;
       const a = c.active;
       html += a
@@ -351,12 +407,12 @@ const WIDGET_DEFS = {
     panel: ({ s }) => {
       const g = s.live.github;
       let html = head(g?.login ? esc(g.login) : 'GitHub', `${g?.login ? btn('openUrl', { url: `https://github.com/${g.login}` }, icon('external', 15), 'ghost icon-only', 'Abrir en GitHub') : ''}${refreshBtn('github')}`) + errorBox(g?.error);
-      if (!g?.days) return html + (!s.settings.githubUser && !s.secrets.githubToken ? empty('Escribe tu usuario (y opcionalmente un token) en Ajustes → GitHub') : '');
+      if (!g?.days) return html + (!s.settings.githubUser && !s.secrets.githubToken ? empty('Escribe tu usuario en Ajustes → GitHub') + githubTokenHelp() : '');
       html += heat(g.days, 7, 'big');
       html += `<div class="stats-grid"><div><b>${g.today}</b><small>hoy</small></div>`;
       if (!g.publicOnly) html += `<div><b>${g.streak}</b><small>días de racha</small></div><div><b>${g.total}</b><small>este año</small></div><div><b>${g.openPRs}</b><small>PRs abiertos</small></div><div><b>${g.reviews}</b><small>revisiones pendientes</small></div><div><b>${g.notifications}</b><small>notificaciones</small></div>`;
       html += '</div>';
-      if (g.publicOnly) html += `<small class="muted">Solo actividad pública reciente. Añade un token en Ajustes para ver tu gráfico completo, PRs y revisiones.</small>`;
+      if (g.publicOnly) html += githubTokenHelp();
       return html;
     },
   },
@@ -422,6 +478,38 @@ const WIDGET_DEFS = {
         <div class="row gap">${btn('openRecycle', {}, icon('external', 15) + ' Abrir')}${r.count ? btn('emptyRecycle', {}, icon('trash', 15) + ' Vaciar', 'danger') : ''}</div>`;
     },
   },
+};
+
+function githubTokenHelp() {
+  return `<div class="info"><b>${icon('key', 15)} ¿No ves tus commits?</b>
+    <span>Si tus repositorios son privados, GitHub no los muestra sin permiso. Crea un token (solo lectura) y pégalo en Ajustes → GitHub → Token.</span>
+    ${btn('openUrl', { url: 'https://github.com/settings/tokens/new?scopes=repo,read:user,notifications&description=Nimbo%20dock' }, icon('external', 14) + ' Crear token en GitHub', 'primary small')}
+    <small class="muted">En la página que se abre: elige la duración, baja hasta el final, toca «Generate token» y copia el código que empieza con ghp_.</small></div>`;
+}
+
+// ------------------------------------------------------------------ bolsa: utilidades
+const LOCAL = { stocksTab: 0, newList: false };
+function allStockSymbols(s) { return [...new Set(s.settings.watchlists.flatMap((l) => l.symbols))]; }
+const fmtPx = (n) => { const d = (n ?? 0) >= 1000 ? 0 : 2; return (n ?? 0).toLocaleString('es-AR', { minimumFractionDigits: d, maximumFractionDigits: d }); };
+const fmtPct = (n) => Math.abs(n ?? 0).toFixed(Math.abs(n) >= 10 ? 1 : 2).replace('.', ',') + '%';
+function miniSpark(values, up, w = 44, h = 20) {
+  if (!values || values.length < 2) return '';
+  const min = Math.min(...values), max = Math.max(...values), span = max - min || 1;
+  const step = w / (values.length - 1);
+  const pts = values.map((v, i) => `${(i * step).toFixed(1)},${(h - 2 - ((v - min) / span) * (h - 4)).toFixed(1)}`).join(' ');
+  return `<svg class="mspark ${up ? 'up' : 'down'}" width="${w}" height="${h}" viewBox="0 0 ${w} ${h}"><polyline points="${pts}"/></svg>`;
+}
+
+// Acciones que se resuelven en la interfaz (devuelven cambios de ajustes para guardar)
+const LOCAL_ACTIONS = {
+  _stocksTab: ({ i }) => { LOCAL.stocksTab = i; LOCAL.newList = false; },
+  _newListForm: () => { LOCAL.newList = !LOCAL.newList; },
+  _stockDel: ({ sym }, s) => {
+    const lists = s.settings.watchlists.map((l, i) => (i === Math.min(LOCAL.stocksTab, s.settings.watchlists.length - 1) ? { ...l, symbols: l.symbols.filter((x) => x !== sym) } : l));
+    return { watchlists: lists };
+  },
+  _listDel: ({ i }, s) => { LOCAL.stocksTab = 0; return { watchlists: s.settings.watchlists.filter((_, j) => j !== i) }; },
+  _targetDel: ({ id }, s) => ({ stockTargets: (s.settings.stockTargets || []).filter((t) => t.id !== id) }),
 };
 
 function cls(p) { return p > 0.9 ? 'bad' : p > 0.7 ? 'warn' : ''; }
@@ -515,7 +603,8 @@ function settingsPanel({ s }) {
     </section>
     <section><h3>GitHub</h3>
       <form class="row add" data-form="githubUser"><input name="user" value="${esc(st.githubUser)}" placeholder="Tu usuario"><button class="btn" type="submit">Guardar</button></form>
-      ${secretField('githubToken', 'Token (opcional)', 'github_pat_…', 'Con un token de solo lectura ves tu gráfico completo, PRs, revisiones y notificaciones.')}
+      ${secretField('githubToken', 'Token', 'ghp_…', 'Necesario si tus repositorios son privados: sin token GitHub no muestra esos commits.')}
+      ${btn('openUrl', { url: 'https://github.com/settings/tokens/new?scopes=repo,read:user,notifications&description=Nimbo%20dock' }, icon('external', 14) + ' Crear token en GitHub', 'small')}
     </section>
     <section><h3>IA</h3>
       <small class="muted">El widget de Claude Code no necesita claves: lee los registros que Claude Code guarda en tu PC. Las claves de administrador son para ver el gasto de la API de tu organización. Se guardan cifradas en este PC.</small>
