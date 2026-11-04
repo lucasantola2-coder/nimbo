@@ -233,35 +233,52 @@ function localMidnightISO() {
   return `${localDateKey(d)}T00:00:00${sign}${hh}:${mm}`;
 }
 
-// Commits de hoy en todas las ramas de los repos que tocaste hoy (incluye los de Claude Code)
-async function repoActivityToday(headers, login, since) {
-  const from = new Date(since);
-  const repos = (await getJSON('https://api.github.com/user/repos?sort=pushed&per_page=30&affiliation=owner,collaborator,organization_member', { headers }))
-    .filter((r) => new Date(r.pushed_at) >= from).slice(0, 10);
+// Commits del mes en TODAS las ramas de tus repos (incluye las ramas de Claude Code), en una sola consulta GraphQL
+function localMonthStartISO() {
+  const d = new Date(); d.setDate(1); d.setHours(0, 0, 0, 0);
+  return d.toISOString();
+}
+async function monthActivity(headers, login) {
+  const monthStart = new Date(localMonthStartISO());
+  const todayStart = new Date(); todayStart.setHours(0, 0, 0, 0);
+  const repos = (await getJSON('https://api.github.com/user/repos?sort=pushed&per_page=40&affiliation=owner,collaborator,organization_member', { headers }))
+    .filter((r) => new Date(r.pushed_at) >= monthStart).slice(0, 12);
+  const days = {};       // 'AAAA-MM-DD' -> commits
   const out = [];
-  await Promise.all(repos.map(async (r) => {
-    let branches = [];
-    try { branches = await getJSON(`https://api.github.com/repos/${r.full_name}/branches?per_page=100`, { headers }); } catch {}
-    const shas = new Set();
-    let active = 0;
-    // de a 6 ramas a la vez
-    const queue = branches.slice(0, 40);
-    await Promise.all(Array.from({ length: 6 }, async () => {
-      while (queue.length) {
-        const b = queue.shift();
-        try {
-          const cs = await getJSON(`https://api.github.com/repos/${r.full_name}/commits?sha=${encodeURIComponent(b.name)}&since=${encodeURIComponent(from.toISOString())}&per_page=100`, { headers });
-          if (cs.length) active++;
-          for (const c of cs) shas.add(c.sha);
-        } catch {}
+  if (repos.length) {
+    const parts = repos.map((r, i) => `r${i}: repository(owner: ${JSON.stringify(r.owner.login)}, name: ${JSON.stringify(r.name)}) {
+      refs(refPrefix: "refs/heads/", first: 20, orderBy: { field: TAG_COMMIT_DATE, direction: DESC }) {
+        nodes { target { ... on Commit { history(since: $since, first: 100) { nodes { oid committedDate } } } } } } }`);
+    const j = await getJSON('https://api.github.com/graphql', {
+      method: 'POST', headers, body: JSON.stringify({ query: `query($since: GitTimestamp!) { ${parts.join('\n')} }`, variables: { since: monthStart.toISOString() } }),
+    });
+    if (j.errors && !j.data) throw new Error(j.errors[0].message);
+    repos.forEach((r, i) => {
+      const seen = new Map();
+      for (const ref of j.data?.[`r${i}`]?.refs?.nodes || []) for (const c of ref.target?.history?.nodes || []) seen.set(c.oid, c.committedDate);
+      if (!seen.size) return;
+      let today = 0;
+      const repoDays = new Set();
+      for (const date of seen.values()) {
+        const d = new Date(date);
+        const k = localDateKey(d);
+        days[k] = (days[k] || 0) + 1;
+        repoDays.add(k);
+        if (d >= todayStart) today++;
       }
-    }));
-    if (shas.size) out.push({ name: r.name, full: r.full_name, commits: shas.size, branches: active, private: r.private });
-  }));
-  let prs = 0;
-  try { prs = (await getJSON(`https://api.github.com/search/issues?per_page=1&q=${encodeURIComponent(`is:pr author:${login} created:>=${since}`)}`, { headers })).total_count; } catch {}
+      out.push({ name: r.name, full: r.full_name, commits: seen.size, today, days: repoDays.size, private: r.private });
+    });
+  }
+  let prs = 0, prsToday = 0;
+  try { prs = (await getJSON(`https://api.github.com/search/issues?per_page=1&q=${encodeURIComponent(`is:pr author:${login} created:>=${localDateKey(monthStart)}`)}`, { headers })).total_count; } catch {}
+  try { prsToday = (await getJSON(`https://api.github.com/search/issues?per_page=1&q=${encodeURIComponent(`is:pr author:${login} created:>=${localMidnightISO()}`)}`, { headers })).total_count; } catch {}
   out.sort((a, b) => b.commits - a.commits);
-  return { commits: out.reduce((n, r) => n + r.commits, 0), prs, repos: out };
+  return {
+    month: out.reduce((n, r) => n + r.commits, 0),
+    today: out.reduce((n, r) => n + r.today, 0),
+    activeDays: Object.keys(days).length,
+    days, prs, prsToday, repos: out,
+  };
 }
 
 async function github(user, token) {
@@ -289,14 +306,13 @@ async function github(user, token) {
       reviews = s2.total_count;
     } catch {}
     try { notifications = (await getJSON('https://api.github.com/notifications?per_page=50', { headers })).length; } catch {}
-    // Tu trabajo real de hoy: commits en TODAS las ramas de tus repos (GitHub solo cuenta la rama principal,
+    // Tu trabajo real: commits en TODAS las ramas (GitHub solo cuenta la rama principal,
     // así que los commits de ramas de Claude Code no aparecen como contribución hasta fusionar el PR)
-    let activity = { commits: 0, prs: 0, repos: [] };
-    try { activity = await repoActivityToday(headers, v.login, since); } catch (e) { activity.error = e.message; }
-    try { commitsToday = (await getJSON(`https://api.github.com/search/commits?per_page=1&q=${encodeURIComponent(`author:${v.login} author-date:>=${since}`)}`, { headers })).total_count; } catch {}
+    let m = null, monthError = null;
+    try { m = await monthActivity(headers, v.login); } catch (e) { monthError = e.message; }
+    if (!m) { try { commitsToday = (await getJSON(`https://api.github.com/search/commits?per_page=1&q=${encodeURIComponent(`author:${v.login} author-date:>=${since}`)}`, { headers })).total_count; } catch {} }
     return {
-      login: v.login, today: Math.max(activity.commits, commitsToday), commitsToday: Math.max(activity.commits, commitsToday),
-      contributionsToday: today, prsToday: activity.prs, repos: activity.repos,
+      login: v.login, today: m ? m.today : commitsToday, contributionsToday: today, month: m, monthError,
       total: v.year.contributionCalendar.totalContributions,
       streak: streak(days),
       days: days.slice(-119).map((d) => d.contributionCount),

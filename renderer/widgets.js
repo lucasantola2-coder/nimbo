@@ -397,24 +397,37 @@ const WIDGET_DEFS = {
   openai: costWidget('openai', 'API de OpenAI', 'Gasto de hoy y del mes (clave de admin)', 'hexagon', 'openaiAdminKey'),
 
   github: {
-    name: 'GitHub', desc: 'Contribuciones, PRs y revisiones', width: 380,
-    tile: ({ s }) => {
+    name: 'GitHub', desc: 'Commits de hoy y resumen del mes (todas las ramas)', width: 400,
+    tile: ({ s, now }) => {
       const g = s.live.github;
       if (!g || g.error && !g.days) return `<button class="tile tile-icon" data-panel="github" title="GitHub">${icon('code')}</button>`;
-      const week = (g.days || []).slice(-21);
-      return `<button class="tile tile-text" data-panel="github" title="GitHub: ${g.today} hoy">${heat(week, 3, 'mini')}<span><b>${g.today}</b><small>hoy</small></span></button>`;
+      const last = g.month ? lastDays(g.month.days, now, 21) : (g.days || []).slice(-21);
+      return `<button class="tile tile-text" data-panel="github" title="GitHub: ${g.today} commits hoy">${heat(last, 3, 'mini')}<span><b>${g.today}</b><small>hoy</small></span></button>`;
     },
-    panel: ({ s }) => {
+    panel: ({ s, now }) => {
       const g = s.live.github;
-      let html = head(g?.login ? esc(g.login) : 'GitHub', `${g?.login ? btn('openUrl', { url: `https://github.com/${g.login}` }, icon('external', 15), 'ghost icon-only', 'Abrir en GitHub') : ''}${refreshBtn('github')}`) + errorBox(g?.error);
+      let html = head(g?.login ? esc(g.login) : 'GitHub', `${g?.login ? btn('openUrl', { url: `https://github.com/${g.login}` }, icon('external', 15), 'ghost icon-only', 'Abrir en GitHub') : ''}${refreshBtn('github')}`) + errorBox(g?.error || g?.monthError);
       if (!g?.days) return html + (!s.settings.githubUser && !s.secrets.githubToken ? empty('Escribe tu usuario en Ajustes → GitHub') + githubTokenHelp() : '');
-      html += heat(g.days, 7, 'big');
-      html += `<div class="stats-grid"><div><b>${g.today}</b><small>commits hoy</small></div>`;
-      if (!g.publicOnly) html += `<div><b>${g.prsToday ?? 0}</b><small>PRs creados hoy</small></div><div><b>${g.streak}</b><small>días de racha</small></div><div><b>${g.openPRs}</b><small>PRs abiertos</small></div><div><b>${g.reviews}</b><small>revisiones pendientes</small></div><div><b>${g.notifications}</b><small>notificaciones</small></div>`;
-      html += '</div>';
-      if (g.repos?.length) html += `<h3 class="sub">Hoy, por repositorio</h3><div class="gh-repos">${g.repos.map((r) => `<button class="gh-repo" data-act="openUrl" data-args="${attr({ url: 'https://github.com/' + r.full })}"><span class="ellipsis">${esc(r.name)}</span><small class="muted">${r.branches} rama${r.branches === 1 ? '' : 's'}</small><b>${r.commits}</b></button>`).join('')}</div>`;
-      if (!g.publicOnly && g.contributionsToday != null) html += `<small class="muted">GitHub te cuenta ${g.contributionsToday} ${g.contributionsToday === 1 ? 'contribución' : 'contribuciones'} hoy: solo suma los commits de la rama principal. Los de las ramas de Claude Code se suman cuando fusionas el PR.</small>`;
-      if (g.publicOnly) html += githubTokenHelp();
+      const m = g.month;
+      if (!m) {
+        // sin token: lo poco que GitHub muestra en público
+        html += heat(g.days, 7, 'big') + `<div class="stats-grid"><div><b>${g.today}</b><small>commits hoy</small></div></div>` + githubTokenHelp();
+        return html;
+      }
+      const monthName = MONTHS[now.getMonth()];
+      const top = m.repos[0];
+      html += `<div class="gh-month-title cap">${monthName} de ${now.getFullYear()}</div>`;
+      html += `<div class="stats-grid"><div><b>${g.today}</b><small>commits hoy</small></div><div><b>${m.month}</b><small>commits en el mes</small></div><div><b>${m.activeDays}</b><small>días con commits</small></div>
+        <div><b>${m.prs}</b><small>PRs en el mes</small></div><div><b>${g.openPRs}</b><small>PRs abiertos</small></div><div><b>${g.reviews}</b><small>revisiones pendientes</small></div></div>`;
+      html += monthCalendar(m.days, now);
+      if (top) html += `<div class="gh-top">${icon('flag', 16)}<span>Tu proyecto del mes: <b>${esc(top.name)}</b>, con ${top.commits} commits en ${top.days} día${top.days === 1 ? '' : 's'}.</span></div>`;
+      if (m.repos.length) {
+        const max = m.repos[0].commits;
+        html += `<h3 class="sub">Proyectos del mes</h3><div class="gh-repos">${m.repos.map((r) => `<button class="gh-repo" data-act="openUrl" data-args="${attr({ url: 'https://github.com/' + r.full })}">
+          <span class="gh-repo-name"><span class="ellipsis">${esc(r.name)}</span>${bar(r.commits / max)}</span>
+          <small class="muted">${r.today ? `<b class="gh-today">+${r.today} hoy</b> · ` : ''}${r.days} día${r.days === 1 ? '' : 's'}</small><b>${r.commits}</b></button>`).join('')}</div>`;
+      } else html += empty('Todavía no hay commits este mes.');
+      html += `<small class="muted">Cuenta los commits de todas las ramas, también los de Claude Code. GitHub, en cambio, te suma ${g.contributionsToday ?? 0} ${g.contributionsToday === 1 ? 'contribución' : 'contribuciones'} hoy porque solo cuenta la rama principal hasta que fusionas el PR.</small>`;
       return html;
     },
   },
@@ -481,6 +494,30 @@ const WIDGET_DEFS = {
     },
   },
 };
+
+// últimos N días como lista de números (para el mini mapa del dock)
+function lastDays(days, now, n) {
+  const out = [];
+  for (let i = n - 1; i >= 0; i--) { const d = new Date(now.getTime() - i * 864e5); out.push(days[dateKey(d)] || 0); }
+  return out;
+}
+const dateKey = (d) => `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
+// calendario del mes con la intensidad de commits de cada día
+function monthCalendar(days, now) {
+  const first = new Date(now.getFullYear(), now.getMonth(), 1);
+  const total = new Date(now.getFullYear(), now.getMonth() + 1, 0).getDate();
+  const max = Math.max(1, ...Object.values(days));
+  let cells = '';
+  for (let i = 0; i < (first.getDay() + 6) % 7; i++) cells += '<span class="gh-day empty"></span>';
+  for (let d = 1; d <= total; d++) {
+    const date = new Date(now.getFullYear(), now.getMonth(), d);
+    const n = days[dateKey(date)] || 0;
+    const lvl = n === 0 ? 0 : Math.min(4, Math.ceil((n / max) * 4));
+    const future = date > now;
+    cells += `<span class="gh-day l${lvl} ${future ? 'future' : ''} ${d === now.getDate() ? 'today' : ''}" title="${d}: ${n} commit${n === 1 ? '' : 's'}">${d}</span>`;
+  }
+  return `<div class="gh-cal"><div class="grid7 dow">${['L', 'M', 'X', 'J', 'V', 'S', 'D'].map((x) => `<span>${x}</span>`).join('')}</div><div class="gh-grid">${cells}</div></div>`;
+}
 
 function githubTokenHelp() {
   return `<div class="info"><b>${icon('key', 15)} ¿No ves tus commits?</b>
