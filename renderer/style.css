@@ -367,3 +367,13 @@ h3.sub { font-size: 12px; text-transform: uppercase; letter-spacing: .6px; color
 .res:hover .res-pin, .res.sel .res-pin { opacity: 1; }
 .res-pin:hover { background: var(--hover); color: var(--fg); }
 .res-pin.on { opacity: 1; color: var(--accent); }
+
+/* uso del plan de Claude */
+.plan { display: flex; flex-direction: column; gap: 10px; margin-bottom: 4px; }
+.plan-row .bar { height: 8px; border-radius: 4px; }
+.plan .warn { color: var(--warn); } .plan .bad { color: var(--bad); }
+.bar.claude.warn i { background: var(--warn); } .bar.claude.bad i { background: var(--bad); }
+.ring.claude-ring .ring-fg { stroke: var(--claude); } .ring.claude-ring.warn .ring-fg { stroke: var(--warn); } .ring.claude-ring.bad .ring-fg { stroke: var(--bad); }
+.tile-ring .ring-ic.claude { color: var(--claude); left: 17px; top: 17px; }
+.tile-text-col { display: flex; flex-direction: column; line-height: 1.15; text-align: left; }
+.tile-text-col b { font-size: 14px; } .tile-text-col small { font-size: 11px; color: var(--muted); }

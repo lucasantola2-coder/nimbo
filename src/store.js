@@ -41,6 +41,7 @@ const DEFAULTS = {
     pins: [],                  // apps ancladas desde Nimbo: { id, name }
     whatsappPinned: false,
     claudeNotify: true,
+    claudePlan: true,          // leer el uso del plan con la sesión de Claude Code (el usuario lo autorizó)
     watchlists: LUCAS_LISTS,
     stockAlertPct: 3,
     stockTargets: [],          // { id, symbol, op: '>' | '<', price }

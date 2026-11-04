@@ -40,7 +40,7 @@ let hiddenForFullscreen = false;
 
 const live = {
   groups: [], stats: null, net: null, drives: null, recycle: null,
-  music: null, weather: null, calendar: null, claudeCode: null, claudeSessions: [], stocks: null, anthropic: null, openai: null, github: null,
+  music: null, weather: null, calendar: null, claudeCode: null, claudePlan: null, claudeSessions: [], stocks: null, anthropic: null, openai: null, github: null,
 };
 const timers = {
   pomodoro: { phase: 'work', running: false, endsAt: 0, remaining: 0, done: 0 },
@@ -254,7 +254,7 @@ async function runService(key, fn) {
 const refreshers = {
   weather: () => runService('weather', () => services.weather(store.settings.location)),
   calendar: () => runService('calendar', () => services.calendar(store.settings.calendars)),
-  claudeCode: () => runService('claudeCode', () => services.claudeCode()),
+  claudeCode: () => { runService('claudeCode', () => services.claudeCode()); if (store.settings.claudePlan !== false) planTick(); },
   anthropic: () => runService('anthropic', () => services.anthropicCost(store.secret('anthropicAdminKey'))),
   openai: () => runService('openai', () => services.openaiCost(store.secret('openaiAdminKey'))),
   github: () => runService('github', () => services.github(store.settings.githubUser, store.secret('githubToken'))),
@@ -291,6 +291,25 @@ function setupClaudeWatch() {
     },
   });
   setInterval(() => { if (enabled('claudeCode')) { try { claudeWatch.tick(); } catch (err) { log('claude watch', err.message); } } }, 2000);
+}
+
+// ---------------------------------------------------------------- uso del plan de Claude (cada 2 minutos)
+let lastPlanAt = 0;
+async function planTick(force) {
+  if (!force && Date.now() - lastPlanAt < 110e3) return;
+  lastPlanAt = Date.now();
+  const prev = live.claudePlan;
+  try { live.claudePlan = await services.claudePlan(); } catch (e) { live.claudePlan = { ...(prev || {}), error: e.message }; log('uso del plan:', e.message); }
+  const p = live.claudePlan?.limits?.find((l) => l.key === 'five_hour');
+  const old = prev?.limits?.find((l) => l.key === 'five_hour');
+  if (p) {
+    for (const th of [80, 95]) {
+      const k = `plan${th}:${p.resetsAt}`;
+      if (p.pct >= th && !notified.has(k)) { notified.add(k); notify(`Claude: usaste el ${Math.round(p.pct)}% de tu límite`, `Se reinicia ${p.resetsAt ? 'a las ' + new Date(p.resetsAt).toLocaleTimeString('es-AR', { hour: '2-digit', minute: '2-digit' }) : 'pronto'}.`); }
+    }
+    if (old && old.pct >= 50 && p.pct < old.pct - 30) notify('Claude: tu límite se reinició', 'Ya tienes tu sesión de 5 horas disponible de nuevo.');
+  }
+  broadcast();
 }
 
 // ---------------------------------------------------------------- alertas de bolsa
@@ -445,6 +464,7 @@ const actions = {
     if (patch.calendars) tickServices('calendar');
     if (patch.githubUser !== undefined) tickServices('github');
     if (patch.watchlists) tickServices('stocks');
+    if (patch.claudePlan) planTick(true);
     if (patch.widgets) { tickServices(); pollSlowSystem(); pollMusic(); }
     broadcast();
   },

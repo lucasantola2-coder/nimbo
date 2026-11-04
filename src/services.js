@@ -178,6 +178,45 @@ function claudeCode() {
   };
 }
 
+// ---------------- Uso del plan de Claude (Pro / Max) ----------------
+// Con permiso del usuario: lee la sesión iniciada de Claude Code en esta PC (solo lectura, nunca se registra ni se modifica)
+// y le pregunta a Anthropic el uso del plan. Es un método no oficial: si Anthropic lo cambia, puede dejar de funcionar.
+function findAccessToken(obj, depth = 0) {
+  if (!obj || typeof obj !== 'object' || depth > 4) return null;
+  if (typeof obj.accessToken === 'string') return { token: obj.accessToken, expiresAt: Number(obj.expiresAt) || 0, plan: obj.subscriptionType || '' };
+  for (const v of Object.values(obj)) { const r = findAccessToken(v, depth + 1); if (r) return r; }
+  return null;
+}
+const PLAN_LABELS = { five_hour: 'Sesión (5 h)', seven_day: 'Semana', seven_day_opus: 'Semana · Opus', seven_day_sonnet: 'Semana · Sonnet', seven_day_oauth_apps: 'Semana · apps' };
+async function claudePlan() {
+  const dirs = [];
+  if (process.env.CLAUDE_CONFIG_DIR) for (const p of process.env.CLAUDE_CONFIG_DIR.split(',')) dirs.push(p.trim());
+  dirs.push(path.join(os.homedir(), '.claude'), path.join(os.homedir(), '.config', 'claude'));
+  let cred = null;
+  for (const d of dirs) {
+    try { cred = findAccessToken(JSON.parse(fs.readFileSync(path.join(d, '.credentials.json'), 'utf8'))); } catch {}
+    if (cred) break;
+  }
+  if (!cred) return { error: 'Inicia sesión una vez en Claude Code desde una terminal (escribe claude y sigue los pasos) para ver el uso de tu plan.', needLogin: true };
+  if (cred.expiresAt && cred.expiresAt < Date.now()) return { error: 'La sesión de Claude Code venció: abre Claude Code (terminal o app) un momento y se renueva sola.', expired: true };
+  const res = await fetch('https://api.anthropic.com/api/oauth/usage', {
+    headers: { Authorization: `Bearer ${cred.token}`, 'anthropic-beta': 'oauth-2025-04-20', 'Content-Type': 'application/json', 'User-Agent': 'claude-code/2.0 (Nimbo dock)' },
+    signal: AbortSignal.timeout(15000),
+  });
+  if (res.status === 401 || res.status === 403) return { error: 'Anthropic no aceptó la sesión: abre Claude Code un momento para renovarla.', expired: true };
+  if (!res.ok) throw new Error(`Anthropic respondió ${res.status}`);
+  const j = await res.json();
+  const limits = [];
+  for (const [key, v] of Object.entries(j || {})) {
+    if (!v || typeof v !== 'object' || typeof v.utilization !== 'number') continue;
+    limits.push({ key, label: PLAN_LABELS[key] || key.replace(/_/g, ' '), pct: v.utilization, resetsAt: v.resets_at ? Date.parse(v.resets_at) : 0 });
+  }
+  if (!limits.length) throw new Error('respuesta sin datos de uso (puede que Anthropic haya cambiado el formato)');
+  const order = ['five_hour', 'seven_day'];
+  limits.sort((a, b) => (order.indexOf(a.key) + 1 || 9) - (order.indexOf(b.key) + 1 || 9));
+  return { plan: cred.plan, limits, at: Date.now() };
+}
+
 // ---------------- Gasto en la API de Anthropic (clave de administrador) ----------------
 function monthStart() { const d = new Date(); return new Date(Date.UTC(d.getUTCFullYear(), d.getUTCMonth(), 1)); }
 
@@ -446,4 +485,4 @@ async function quotes(symbols) {
   return { quotes: out, at: Date.now(), error: failed.length === list.length && list.length ? 'No se pudo conectar con Yahoo Finance' : null };
 }
 
-module.exports = { geocode, weather, calendar, claudeCode, anthropicCost, openaiCost, github, quotes, parseChart, parseSpark };
+module.exports = { geocode, weather, calendar, claudeCode, claudePlan, anthropicCost, openaiCost, github, quotes, parseChart, parseSpark };

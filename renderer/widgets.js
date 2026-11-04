@@ -29,6 +29,7 @@ function fmtClock(ms) {
 function fmtDur(ms) {
   const m = Math.max(0, Math.round(ms / 60000));
   if (m < 60) return `${m} min`;
+  if (m >= 1440) { const d = Math.floor(m / 1440), h = Math.floor((m % 1440) / 60); return `${d} día${d === 1 ? '' : 's'}${h ? ` ${h} h` : ''}`; }
   return `${Math.floor(m / 60)} h ${pad(m % 60)} min`;
 }
 function fmtTokens(n) {
@@ -363,14 +364,27 @@ const WIDGET_DEFS = {
       const ses = s.live.claudeSessions || [];
       const working = ses.some((x) => x.status === 'working'), waiting = ses.some((x) => x.status === 'waiting');
       const live = waiting ? 'waiting' : working ? 'working' : '';
+      const p5 = s.live.claudePlan?.limits?.find((l) => l.key === 'five_hour');
+      if (p5) {
+        const sub = waiting ? 'te espera' : working ? 'trabajando…' : p5.resetsAt ? fmtDur(p5.resetsAt - now) : 'plan';
+        return `<button class="tile tile-ring ${live}" data-panel="claudeCode" title="Claude: ${Math.round(p5.pct)}% de la sesión de 5 h">${ring(p5.pct / 100, 34, 3.5, 'claude-ring ' + planCls(p5.pct))}<i class="ring-ic claude">${icon('asterisk', 14, live ? 'spin' : '')}</i><span class="tile-text-col"><b>${Math.round(p5.pct)}%</b><small>${sub}</small></span></button>`;
+      }
       if (!a) return `<button class="tile tile-icon ${live}" data-panel="claudeCode" title="Claude Code">${icon('asterisk', 20, 'claude' + (live ? ' spin' : ''))}</button>`;
       const pct = c.maxBlock ? a.tokens / c.maxBlock : 0;
       return `<button class="tile tile-text ${live}" data-panel="claudeCode" title="Claude Code: bloque actual">${icon('asterisk', 18, 'claude' + (live ? ' spin' : ''))}<span><b>${fmtTokens(a.tokens)}</b><small>${waiting ? 'te espera' : working ? 'trabajando…' : fmtDur(a.resetsAt - now)}</small></span>${bar(pct, 'vert claude')}</button>`;
     },
     panel: ({ s, now }) => {
       const c = s.live.claudeCode;
-      let html = head('Claude Code', refreshBtn('claudeCode'));
+      let html = head('Claude', refreshBtn('claudeCode'));
       const ses = s.live.claudeSessions || [];
+      const plan = s.live.claudePlan;
+      if (s.settings.claudePlan !== false) {
+        if (plan?.limits?.length) {
+          html += `<div class="plan">${plan.limits.map((l) => `<div class="plan-row"><div class="row between"><b>${esc(l.label)}</b><span class="${planCls(l.pct)}">${Math.round(l.pct)}%</span></div>
+            ${bar(l.pct / 100, 'claude ' + planCls(l.pct))}<small class="muted">${l.resetsAt ? `Se reinicia ${sameDay(new Date(l.resetsAt), now) ? 'a las ' + fmtTime(new Date(l.resetsAt), s.settings.use24h) : DAYS_LONG[new Date(l.resetsAt).getDay()] + ' ' + fmtTime(new Date(l.resetsAt), s.settings.use24h)} · en ${fmtDur(l.resetsAt - now)}` : ''}</small></div>`).join('')}
+            <small class="muted">Uso de tu plan${plan.plan ? ' ' + esc(plan.plan) : ''}: incluye la app, la web, la nube y Claude Code.</small></div><div class="sep"></div>`;
+        } else if (plan?.error) html += errorBox(plan.error);
+      }
       if (ses.length) {
         html += '<div class="cc-sessions">' + ses.map((x) => {
           const st = x.status === 'waiting' ? 'Esperando tu aprobación' : x.status === 'working' ? (x.tool ? `Trabajando · usando ${esc(x.tool)}` : 'Escribiendo la respuesta…') : `Terminó ${x.doneAt ? 'hace ' + fmtDur(now - x.doneAt) : ''}`;
@@ -522,6 +536,8 @@ function monthCalendar(days, now) {
   return `<div class="gh-cal"><div class="grid7 dow">${['L', 'M', 'X', 'J', 'V', 'S', 'D'].map((x) => `<span>${x}</span>`).join('')}</div><div class="gh-grid">${cells}</div></div>`;
 }
 
+const planCls = (pct) => (pct >= 90 ? 'bad' : pct >= 70 ? 'warn' : '');
+
 function githubTokenHelp() {
   return `<div class="info"><b>${icon('key', 15)} ¿No ves tus commits?</b>
     <span>Si tus repositorios son privados, GitHub no los muestra sin permiso. Crea un token (solo lectura) y pégalo en Ajustes → GitHub → Token.</span>
@@ -649,6 +665,7 @@ function settingsPanel({ s }) {
       ${btn('openUrl', { url: 'https://github.com/settings/tokens/new?scopes=repo,read:user,notifications&description=Nimbo%20dock' }, icon('external', 14) + ' Crear token en GitHub', 'small')}
     </section>
     <section><h3>IA</h3>
+      <label class="switch"><input type="checkbox" data-setting="claudePlan" ${st.claudePlan !== false ? 'checked' : ''}><span>Mostrar el uso de mi plan de Claude<small>Lee la sesión de Claude Code de esta PC solo para consultar tu uso a Anthropic. Método no oficial.</small></span></label>
       <small class="muted">El widget de Claude Code no necesita claves: lee los registros que Claude Code guarda en tu PC. Las claves de administrador son para ver el gasto de la API de tu organización. Se guardan cifradas en este PC.</small>
       ${secretField('anthropicAdminKey', 'Clave de administrador de Anthropic', 'sk-ant-admin…', 'Se crea en la Consola de Claude → Ajustes → Claves de administrador.')}
       ${secretField('openaiAdminKey', 'Clave de administrador de OpenAI', 'sk-admin-…', 'Se crea en platform.openai.com → Organización → Admin keys.')}
