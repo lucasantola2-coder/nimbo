@@ -90,6 +90,16 @@ root.addEventListener('click', async (e) => {
   const t = e.target.closest('button, [data-panel], [data-act], [data-key], [data-result], [data-todo-del], [data-todo-clear], [data-clear-secret]');
   if (!t) return;
   if (t.dataset.key) { hoverCancel(); return api.action('appClick', { key: t.dataset.key }); }
+  const pinBtn = e.target.closest('[data-pin]');
+  if (pinBtn) {
+    const r = results[Number(pinBtn.dataset.pin)];
+    if (r && !(S.settings.pins || []).some((p) => p.id === r.id)) {
+      S.settings.pins = [...(S.settings.pins || []), { id: r.id, name: r.name }];
+      api.action('pinApp', { id: r.id, name: r.name });
+      renderResults();
+    }
+    return;
+  }
   if (t.dataset.result != null) return openResult(Number(t.dataset.result));
   if (t.dataset.panel) {
     const r = t.getBoundingClientRect();
@@ -299,7 +309,9 @@ function renderResults() {
 function row(r, i) {
   const ic = r.kind === 'app' ? iconImg(r.iconKey, 26) : `<span class="res-ic">${icon(r.icon || 'gear', 18)}</span>`;
   const sub = { app: 'App', setting: 'Configuración', keys: 'Sistema', web: 'Web' }[r.kind];
-  return `<button class="res" data-result="${i}">${ic}<span class="res-name ellipsis">${esc(r.name)}</span><small class="muted">${sub}</small></button>`;
+  const pinned = r.kind === 'app' && (S?.settings.pins || []).some((p) => p.id === r.id);
+  const pin = r.kind === 'app' ? `<span class="res-pin ${pinned ? 'on' : ''}" data-pin="${i}" title="${pinned ? 'Anclada en el dock' : 'Anclar en el dock'}">${icon('pin', 15)}</span>` : '';
+  return `<button class="res" data-result="${i}">${ic}<span class="res-name ellipsis">${esc(r.name)}</span>${pin}<small class="muted">${sub}</small></button>`;
 }
 function openResult(i) {
   const r = results[i]; if (!r) return;

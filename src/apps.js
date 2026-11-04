@@ -7,6 +7,21 @@ const { spawn } = require('child_process');
 const ICON_SIZE = 64;
 const norm = (p) => (p || '').toLowerCase();
 const expandEnv = (p) => (p || '').replace(/%([^%]+)%/g, (m, k) => process.env[k] ?? process.env[k.toUpperCase()] ?? m);
+// Carpetas conocidas que usa la lista de apps de Windows en lugar de rutas
+const KNOWN_FOLDERS = {
+  '{6D809377-6AF0-444B-8957-A3773F02200E}': process.env.ProgramFiles || 'C:\\Program Files',
+  '{7C5A40EF-A0FB-4BFC-874A-C0F2E0B9FA8E}': process.env['ProgramFiles(x86)'] || 'C:\\Program Files (x86)',
+  '{F38BF404-1D43-42F2-9305-67DE0B28FC23}': process.env.windir || 'C:\\Windows',
+  '{1AC14E77-02E7-4E5D-B744-2EB1AE5198B7}': path.join(process.env.windir || 'C:\\Windows', 'System32'),
+};
+function appIdToExe(id) {
+  if (!id || !/\.exe$/i.test(id)) return '';
+  const m = id.match(/^(\{[0-9A-F-]+\})\\(.*)$/i);
+  if (m && KNOWN_FOLDERS[m[1].toUpperCase()]) return path.join(KNOWN_FOLDERS[m[1].toUpperCase()], m[2]);
+  return /^[a-z]:\\/i.test(id) ? id : '';
+}
+const isAumid = (id) => /!/.test(id || '') && !/\\/.test(id || '');
+
 const isPackagedApp = (exe) => /\\WindowsApps\\|\\ApplicationFrameHost\.exe$/i.test(exe || '');
 
 function createApps({ helper, slow, log, onIcons, isWin }) {
@@ -50,7 +65,9 @@ function createApps({ helper, slow, log, onIcons, isWin }) {
   }
 
   // ---------------------------------------------------------- ancladas
-  async function loadPinned() {
+  let nimboPins = [];   // apps ancladas desde Nimbo: { id, name } (id = id de app de Windows o ruta a un .exe)
+  async function loadPinned(extra) {
+    if (extra) nimboPins = extra;
     if (!isWin) return;
     const dir = path.join(process.env.APPDATA || '', 'Microsoft', 'Internet Explorer', 'Quick Launch', 'User Pinned', 'TaskBar');
     let files = [];
@@ -62,6 +79,13 @@ function createApps({ helper, slow, log, onIcons, isWin }) {
       if (!target) { try { target = shell.readShortcutLink(lnk).target || ''; } catch {} }
       return { name: path.basename(lnk, '.lnk'), lnk, aumid: info[i]?.aumid || '', exe: expandEnv(target), iconKey: lnk };
     });
+    for (const p of nimboPins) {
+      const exe = appIdToExe(p.id) || (/\.exe$/i.test(p.id) ? p.id : '');
+      const aumid = exe ? '' : (/\\/.test(p.id) ? '' : p.id);
+      // si Windows ya la tiene anclada, no repetirla
+      if (pinned.some((x) => (aumid && norm(x.aumid) === norm(aumid)) || (exe && norm(x.exe) === norm(exe)))) continue;
+      pinned.push({ name: p.name, appId: p.id, nimbo: true, aumid, exe, iconKey: /^[a-z]:\\/i.test(p.id) ? p.id : 'shell:AppsFolder\\' + p.id });
+    }
     needIcons(pinned.map((p) => p.iconKey));
     log('apps ancladas:', pinned.map((p) => `${p.name} [${p.aumid || '-'}] ${p.exe || '-'}`));
   }
@@ -73,7 +97,7 @@ function createApps({ helper, slow, log, onIcons, isWin }) {
   }
 
   function setWindows(windows) {
-    const items = pinned.map((p) => ({ key: 'pin:' + norm(p.lnk), name: p.name, lnk: p.lnk, aumid: p.aumid, exe: p.exe, iconKey: p.iconKey, windows: [], claimed: null }));
+    const items = pinned.map((p) => ({ key: 'pin:' + norm(p.lnk || p.appId), name: p.name, lnk: p.lnk, appId: p.appId, nimbo: !!p.nimbo, aumid: p.aumid, exe: p.exe, iconKey: p.iconKey, windows: [], claimed: null }));
     const byKey = new Map();
     for (const w of windows) {
       const gkey = norm(w.aumid) || norm(w.exe) || 'hwnd:' + w.hwnd;
@@ -108,6 +132,7 @@ function createApps({ helper, slow, log, onIcons, isWin }) {
     if (!item) return;
     log('abrir app', item.name, item.lnk || item.relaunchCmd || item.aumid || item.exe);
     if (item.lnk) { const err = await shell.openPath(item.lnk); if (!err) return; log('openPath falló', err); }
+    if (item.appId && !/^[a-z]:\\/i.test(item.appId)) return launchAumid(item.appId);
     if (item.relaunchCmd) return runCommandLine(item.relaunchCmd);
     if (item.aumid && isPackagedApp(item.exe)) return launchAumid(item.aumid);
     if (item.exe) return shell.openPath(item.exe);
@@ -129,8 +154,10 @@ function createApps({ helper, slow, log, onIcons, isWin }) {
     return appList || [];
   }
 
+  async function findApp(re) { return (await list()).find((a) => re.test(a.name)); }
+
   return {
-    icons, needIcons, loadPinned, setWindows, launch, launchAumid, list,
+    icons, needIcons, findApp, appIdToExe, loadPinned, setWindows, launch, launchAumid, list,
     get groups() { return groups; },
     find: (key) => groups.find((g) => g.key === key),
   };

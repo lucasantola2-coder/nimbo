@@ -38,6 +38,8 @@ const DEFAULTS = {
     pomodoroWork: 25,
     pomodoroBreak: 5,
     autoUpdate: true,
+    pins: [],                  // apps ancladas desde Nimbo: { id, name }
+    whatsappPinned: false,
     claudeNotify: true,
     watchlists: LUCAS_LISTS,
     stockAlertPct: 3,

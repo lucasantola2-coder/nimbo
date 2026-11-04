@@ -381,6 +381,7 @@ async function applyTaskbar() {
 // ---------------------------------------------------------------- acciones desde la interfaz
 const actions = {
   async launchItem({ key }) { hidePreview(); await apps.launch(apps.find(key)); },
+  async pinApp({ id, name }) { await pinApp(id, name); },
   async launchApp({ id, name }) { log('buscador: abrir', name, id); hidePanel(); apps.launchAumid(id); },
   async searchWeb({ q }) { hidePanel(); await shell.openExternal('https://www.google.com/search?q=' + encodeURIComponent(q)); },
   async openSettingsUri({ uri }) { hidePanel(); if (/^ms-settings:/.test(uri)) await shell.openExternal(uri); },
@@ -407,7 +408,12 @@ const actions = {
     if (tpl.length) tpl.push({ type: 'separator' });
     tpl.push({ label: item.windows.length ? 'Abrir otra ventana' : 'Abrir', click: () => apps.launch(item) });
     if (item.windows.length) tpl.push({ label: item.windows.length > 1 ? 'Cerrar todas las ventanas' : 'Cerrar ventana', click: () => item.windows.forEach((w) => helper.safe('close', { hwnd: w.hwnd })) });
-    tpl.push({ type: 'separator' }, { label: 'Anclar o desanclar: desde el menú Inicio de Windows', enabled: false });
+    tpl.push({ type: 'separator' });
+    if (item.nimbo) tpl.push({ label: 'Desanclar de Nimbo', click: () => unpinApp(item.appId) });
+    else if (!item.lnk) {
+      const id = item.aumid || item.exe;
+      if (id) tpl.push({ label: 'Anclar en Nimbo', click: () => pinApp(id, item.name) });
+    } else tpl.push({ label: 'Anclada en Windows (se cambia desde el menú Inicio)', enabled: false });
     Menu.buildFromTemplate(tpl).popup({ window: dockWin });
   },
   async dockMenu() {
@@ -556,6 +562,19 @@ ipcMain.on('panel:size', (_e, { width, height }) => {
   if (panelWin.isVisible()) positionPanel(lastPanelSize.width, lastPanelSize.height);
   else showPanel(lastPanelSize.width, lastPanelSize.height);
 });
+
+// ---------------------------------------------------------------- anclar apps en Nimbo
+async function pinApp(id, name) {
+  if (!id || store.settings.pins.some((p) => p.id === id)) return;
+  store.setSettings({ pins: [...store.settings.pins, { id, name }] });
+  await apps.loadPinned(store.settings.pins);
+  pollWindows();
+}
+async function unpinApp(id) {
+  store.setSettings({ pins: store.settings.pins.filter((p) => p.id !== id) });
+  await apps.loadPinned(store.settings.pins);
+  pollWindows();
+}
 
 // ---------------------------------------------------------------- vistas previas de ventanas (al pasar el mouse)
 const preview = { key: null, anchor: 0, inside: false, hideTimer: null, thumbs: {}, capturing: false, refresh: null };
@@ -731,9 +750,17 @@ app.whenReady().then(async () => {
   screen.on('display-removed', () => { if (dockWin) dockWin.setBounds(dockBounds()); });
 
   await applyTaskbar();
-  await apps.loadPinned();
-  setInterval(() => apps.loadPinned(), 60e3);
-  setTimeout(() => apps.list(), 8000);        // precargar la lista del buscador
+  await apps.loadPinned(store.settings.pins);
+  setInterval(() => apps.loadPinned(store.settings.pins), 60e3);
+  setTimeout(async () => {
+    await apps.list();                          // precargar la lista del buscador
+    // WhatsApp de la Microsoft Store no aparece entre las ancladas de Windows: anclarla en Nimbo una vez
+    if (!store.settings.whatsappPinned) {
+      const wa = await apps.findApp(/^whatsapp/i);
+      if (wa) { await pinApp(wa.id, wa.name); log('WhatsApp anclada en Nimbo', wa.id); }
+      store.setSettings({ whatsappPinned: true });
+    }
+  }, 8000);
   registerShortcut();
   setupUpdater();
   setupClaudeWatch();

@@ -362,3 +362,8 @@ h3.sub { font-size: 12px; text-transform: uppercase; letter-spacing: .6px; color
 .gh-repo { grid-template-columns: 1fr auto 40px !important; }
 .gh-repo-name { display: flex; flex-direction: column; min-width: 0; gap: 0; } .gh-repo-name .bar { height: 4px; margin: 4px 0 0; }
 .gh-today { color: var(--good); font-weight: 600; }
+
+.res-pin { width: 28px; height: 28px; border-radius: 7px; display: grid; place-items: center; opacity: 0; flex: none; color: var(--muted); }
+.res:hover .res-pin, .res.sel .res-pin { opacity: 1; }
+.res-pin:hover { background: var(--hover); color: var(--fg); }
+.res-pin.on { opacity: 1; color: var(--accent); }
