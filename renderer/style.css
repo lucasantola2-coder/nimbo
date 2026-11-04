@@ -343,3 +343,8 @@ h3.sub { font-size: 12px; text-transform: uppercase; letter-spacing: .6px; color
 /* ------------------------------------------------ avisos */
 .info { display: flex; flex-direction: column; gap: 8px; align-items: flex-start; background: color-mix(in srgb, var(--accent) 12%, transparent); border-radius: 12px; padding: 12px; margin-top: 6px; }
 .info b { display: flex; align-items: center; gap: 6px; }
+
+.gh-repos { display: flex; flex-direction: column; gap: 4px; margin-bottom: 10px; }
+.gh-repo { display: grid; grid-template-columns: 1fr auto 40px; align-items: center; gap: 10px; padding: 7px 10px; border-radius: 9px; background: var(--surface); text-align: left; }
+.gh-repo:hover { background: var(--hover); }
+.gh-repo b { text-align: right; font-variant-numeric: tabular-nums; }

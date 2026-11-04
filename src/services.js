@@ -233,6 +233,37 @@ function localMidnightISO() {
   return `${localDateKey(d)}T00:00:00${sign}${hh}:${mm}`;
 }
 
+// Commits de hoy en todas las ramas de los repos que tocaste hoy (incluye los de Claude Code)
+async function repoActivityToday(headers, login, since) {
+  const from = new Date(since);
+  const repos = (await getJSON('https://api.github.com/user/repos?sort=pushed&per_page=30&affiliation=owner,collaborator,organization_member', { headers }))
+    .filter((r) => new Date(r.pushed_at) >= from).slice(0, 10);
+  const out = [];
+  await Promise.all(repos.map(async (r) => {
+    let branches = [];
+    try { branches = await getJSON(`https://api.github.com/repos/${r.full_name}/branches?per_page=100`, { headers }); } catch {}
+    const shas = new Set();
+    let active = 0;
+    // de a 6 ramas a la vez
+    const queue = branches.slice(0, 40);
+    await Promise.all(Array.from({ length: 6 }, async () => {
+      while (queue.length) {
+        const b = queue.shift();
+        try {
+          const cs = await getJSON(`https://api.github.com/repos/${r.full_name}/commits?sha=${encodeURIComponent(b.name)}&since=${encodeURIComponent(from.toISOString())}&per_page=100`, { headers });
+          if (cs.length) active++;
+          for (const c of cs) shas.add(c.sha);
+        } catch {}
+      }
+    }));
+    if (shas.size) out.push({ name: r.name, full: r.full_name, commits: shas.size, branches: active, private: r.private });
+  }));
+  let prs = 0;
+  try { prs = (await getJSON(`https://api.github.com/search/issues?per_page=1&q=${encodeURIComponent(`is:pr author:${login} created:>=${since}`)}`, { headers })).total_count; } catch {}
+  out.sort((a, b) => b.commits - a.commits);
+  return { commits: out.reduce((n, r) => n + r.commits, 0), prs, repos: out };
+}
+
 async function github(user, token) {
   if (!user && !token) return { error: 'Escribe tu usuario de GitHub en Ajustes' };
   const headers = { Accept: 'application/vnd.github+json', 'User-Agent': 'Nimbo-Dock' };
@@ -258,10 +289,14 @@ async function github(user, token) {
       reviews = s2.total_count;
     } catch {}
     try { notifications = (await getJSON('https://api.github.com/notifications?per_page=50', { headers })).length; } catch {}
-    // commits de hoy en cualquier rama (las contribuciones solo cuentan la rama principal)
+    // Tu trabajo real de hoy: commits en TODAS las ramas de tus repos (GitHub solo cuenta la rama principal,
+    // así que los commits de ramas de Claude Code no aparecen como contribución hasta fusionar el PR)
+    let activity = { commits: 0, prs: 0, repos: [] };
+    try { activity = await repoActivityToday(headers, v.login, since); } catch (e) { activity.error = e.message; }
     try { commitsToday = (await getJSON(`https://api.github.com/search/commits?per_page=1&q=${encodeURIComponent(`author:${v.login} author-date:>=${since}`)}`, { headers })).total_count; } catch {}
     return {
-      login: v.login, today: Math.max(today, commitsToday), commitsToday,
+      login: v.login, today: Math.max(activity.commits, commitsToday), commitsToday: Math.max(activity.commits, commitsToday),
+      contributionsToday: today, prsToday: activity.prs, repos: activity.repos,
       total: v.year.contributionCalendar.totalContributions,
       streak: streak(days),
       days: days.slice(-119).map((d) => d.contributionCount),

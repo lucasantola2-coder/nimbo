@@ -409,9 +409,11 @@ const WIDGET_DEFS = {
       let html = head(g?.login ? esc(g.login) : 'GitHub', `${g?.login ? btn('openUrl', { url: `https://github.com/${g.login}` }, icon('external', 15), 'ghost icon-only', 'Abrir en GitHub') : ''}${refreshBtn('github')}`) + errorBox(g?.error);
       if (!g?.days) return html + (!s.settings.githubUser && !s.secrets.githubToken ? empty('Escribe tu usuario en Ajustes → GitHub') + githubTokenHelp() : '');
       html += heat(g.days, 7, 'big');
-      html += `<div class="stats-grid"><div><b>${g.today}</b><small>hoy</small></div>`;
-      if (!g.publicOnly) html += `<div><b>${g.streak}</b><small>días de racha</small></div><div><b>${g.total}</b><small>este año</small></div><div><b>${g.openPRs}</b><small>PRs abiertos</small></div><div><b>${g.reviews}</b><small>revisiones pendientes</small></div><div><b>${g.notifications}</b><small>notificaciones</small></div>`;
+      html += `<div class="stats-grid"><div><b>${g.today}</b><small>commits hoy</small></div>`;
+      if (!g.publicOnly) html += `<div><b>${g.prsToday ?? 0}</b><small>PRs creados hoy</small></div><div><b>${g.streak}</b><small>días de racha</small></div><div><b>${g.openPRs}</b><small>PRs abiertos</small></div><div><b>${g.reviews}</b><small>revisiones pendientes</small></div><div><b>${g.notifications}</b><small>notificaciones</small></div>`;
       html += '</div>';
+      if (g.repos?.length) html += `<h3 class="sub">Hoy, por repositorio</h3><div class="gh-repos">${g.repos.map((r) => `<button class="gh-repo" data-act="openUrl" data-args="${attr({ url: 'https://github.com/' + r.full })}"><span class="ellipsis">${esc(r.name)}</span><small class="muted">${r.branches} rama${r.branches === 1 ? '' : 's'}</small><b>${r.commits}</b></button>`).join('')}</div>`;
+      if (!g.publicOnly && g.contributionsToday != null) html += `<small class="muted">GitHub te cuenta ${g.contributionsToday} ${g.contributionsToday === 1 ? 'contribución' : 'contribuciones'} hoy: solo suma los commits de la rama principal. Los de las ramas de Claude Code se suman cuando fusionas el PR.</small>`;
       if (g.publicOnly) html += githubTokenHelp();
       return html;
     },
