@@ -298,13 +298,23 @@ function stockAlerts() {
   const q = live.stocks?.quotes; if (!q || !enabled('stocks')) return;
   const day = new Date().toDateString();
   const th = Math.max(0.5, Number(store.settings.stockAlertPct) || 3);
+  const moves = [];
   for (const sym of allSymbols()) {
     const x = q[sym]; if (!x || x.error || x.open === false) continue;
     const level = Math.floor(Math.abs(x.pct) / th);
     if (level >= 1) {
       const k = `mv:${day}:${sym}:${Math.sign(x.pct)}:${level}`;
-      if (!notified.has(k)) { notified.add(k); notify(`${sym} ${x.pct > 0 ? '▲' : '▼'} ${x.pct.toFixed(1).replace('.', ',')}% hoy`, `${x.name}: ${x.price.toFixed(2)} ${x.currency}`); }
+      if (!notified.has(k)) { notified.add(k); moves.push(x); }
     }
+  }
+  const pctTxt = (x) => `${x.pct > 0 ? '+' : '−'}${Math.abs(x.pct).toFixed(1).replace('.', ',')}%`;
+  if (moves.length === 1) {
+    const x = moves[0];
+    notify(`${x.symbol} ${x.pct > 0 ? '▲' : '▼'} ${pctTxt(x)} hoy`, `${x.name}: ${x.price.toFixed(2)} ${x.currency}`, () => openPanel('stocks', null));
+  } else if (moves.length > 1) {
+    // varias a la vez: un solo aviso con las que más se movieron
+    moves.sort((a, b) => Math.abs(b.pct) - Math.abs(a.pct));
+    notify(`${moves.length} acciones se mueven más de ${th}%`, moves.slice(0, 6).map((x) => `${x.symbol} ${pctTxt(x)}`).join(' · ') + (moves.length > 6 ? ' …' : ''), () => openPanel('stocks', null));
   }
   const targets = store.settings.stockTargets || [];
   const hit = targets.filter((t) => { const x = q[t.symbol]; return x && !x.error && (t.op === '>' ? x.price >= t.price : x.price <= t.price); });

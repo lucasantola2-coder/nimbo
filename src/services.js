@@ -379,16 +379,60 @@ async function quote(sym) {
   return { symbol: sym, error: lastErr?.message || 'error' };
 }
 
+// Pide hasta 20 símbolos por consulta (endpoint "spark" de Yahoo); si falla, uno por uno con "chart".
+function parseSpark(j) {
+  const out = {};
+  if (j?.spark?.result) {
+    for (const r of j.spark.result) {
+      const data = r.response?.[0];
+      if (!data) continue;
+      try { out[r.symbol] = parseChart(r.symbol, { chart: { result: [data] } }); } catch {}
+    }
+    return out;
+  }
+  // formato alternativo: { AAPL: { timestamp, close, chartPreviousClose, ... } }
+  for (const [sym, d] of Object.entries(j || {})) {
+    if (!d || !Array.isArray(d.close)) continue;
+    const closes = d.close.filter((v) => v != null);
+    const price = closes[closes.length - 1];
+    const prev = d.chartPreviousClose ?? d.previousClose ?? closes[0];
+    out[sym] = { symbol: sym, name: sym, currency: '', price, prev, change: price - prev, pct: prev ? ((price - prev) / prev) * 100 : 0, open: null, time: Date.now(), spark: closes.filter((_, i) => i % Math.max(1, Math.floor(closes.length / 48)) === 0) };
+  }
+  return out;
+}
+
+async function sparkBatch(symbols) {
+  for (const host of ['query1', 'query2']) {
+    try {
+      const url = `https://${host}.finance.yahoo.com/v8/finance/spark?symbols=${symbols.map(encodeURIComponent).join(',')}&range=1d&interval=5m`;
+      const res = parseSpark(await getJSON(url, { headers: { 'User-Agent': YAHOO_UA, Accept: 'application/json' } }));
+      if (Object.keys(res).length) return res;
+    } catch {}
+  }
+  return {};
+}
+
+const nameCache = {};   // el endpoint por tandas no siempre trae el nombre: se completa de a poco
 async function quotes(symbols) {
   const list = [...new Set(symbols.map((s) => s.trim().toUpperCase()).filter(Boolean))];
   const out = {};
-  const queue = list.slice();
-  const workers = Array.from({ length: Math.min(5, queue.length) }, async () => {
-    while (queue.length) { const s = queue.shift(); out[s] = await quote(s); }
-  });
-  await Promise.all(workers);
+  for (let i = 0; i < list.length; i += 20) Object.assign(out, await sparkBatch(list.slice(i, i + 20)));
+  // los que faltan (o sin nombre todavía): de a uno, con pocos a la vez
+  const missing = list.filter((s) => !out[s]);
+  const unnamed = list.filter((s) => out[s] && out[s].name === s && !nameCache[s]).slice(0, 8);
+  const queue = [...missing, ...unnamed];
+  await Promise.all(Array.from({ length: Math.min(4, queue.length) }, async () => {
+    while (queue.length) {
+      const s = queue.shift();
+      const q = await quote(s);
+      if (!q.error) { nameCache[s] = { name: q.name, currency: q.currency }; out[s] = q; }
+      else if (!out[s]) out[s] = q;
+    }
+  }));
+  for (const s of list) if (out[s] && !out[s].error && nameCache[s]) { out[s].name = nameCache[s].name; out[s].currency = out[s].currency || nameCache[s].currency; }
+  for (const s of list) if (out[s] && !out[s].error && out[s].name !== s) nameCache[s] = { name: out[s].name, currency: out[s].currency };
   const failed = list.filter((s) => out[s]?.error);
   return { quotes: out, at: Date.now(), error: failed.length === list.length && list.length ? 'No se pudo conectar con Yahoo Finance' : null };
 }
 
-module.exports = { geocode, weather, calendar, claudeCode, anthropicCost, openaiCost, github, quotes, parseChart };
+module.exports = { geocode, weather, calendar, claudeCode, anthropicCost, openaiCost, github, quotes, parseChart, parseSpark };

@@ -20,5 +20,7 @@ Solo viajan `main.js`, `preload.js`, `loader.js`, `package.json`, `src/`, `rende
 - `renderer/`: interfaz; `widgets.js` define cada widget.
 
 ## Probar sin Windows
-- `NIMBO_SELFTEST=settings xvfb-run -a npx electron . --no-sandbox` abre un panel y lo registra.
+- `NIMBO_SELFTEST=settings xvfb-run -a npx electron . --no-sandbox` abre un panel y lo registra. Guardar la salida completa en un archivo y buscar `App threw an error during load` / `Uncaught`: si el código no carga, no aparece la línea `SELFTEST` y un `grep` la oculta.
+- Antes de publicar, probar también con una configuración vieja en `~/.config/Nimbo/nimbo.json` (las migraciones de `src/store.js` corren al cargar) y sin ella.
+- Si una prueba no arranca, revisar que no quede otro Electron abierto (solo se permite una instancia).
 - Lo nativo de Windows no corre en Linux: pedir al usuario el registro (clic derecho en el dock → "Abrir registro de diagnóstico", `%APPDATA%\Nimbo\nimbo.log`).

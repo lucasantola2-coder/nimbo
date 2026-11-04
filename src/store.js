@@ -12,6 +12,18 @@ const WIDGETS = [
 // Los que vienen apagados de fábrica
 const OFF_BY_DEFAULT = ['pomodoro', 'anthropic', 'openai', 'storage', 'recycle', 'calendar'];
 
+// Watchlist de Lucas (noviembre 2026), agrupada por tema
+const LUCAS_LISTS = [
+  { name: 'Principal', symbols: ['UBER', 'BTC-USD', 'IREN', 'XLV', 'VST', 'MP', 'AMAT', 'YPF', 'AEVA', 'MU', 'NBIS', 'META', 'NU', 'MELI', 'BRK-B', 'RKLB', 'AVGO'] },
+  { name: 'Argentina', symbols: ['GGAL', 'BMA', 'BBAR', 'SUPV', 'PAM', 'EDN', 'TGS', 'CEPU', 'TEO', 'LOMA', 'YPF'] },
+  { name: 'Bancos', symbols: ['JPM', 'BAC', 'C', 'GS', 'MS', 'HSBC', 'BCS', 'UBS', 'DB', 'SAN', 'BNPQY', 'MUFG', 'RY', 'ITUB', 'HOOD'] },
+  { name: 'Consumo', symbols: ['PG', 'KO', 'PEP', 'NESN.SW', 'UL', 'WMT', 'COST', 'MCD', 'NKE', 'MDLZ', 'CL', 'PM', 'BUD', 'DEO', 'LRLCY'] },
+  { name: 'Energía', symbols: ['URA', 'XOM', 'CVX', 'COP', 'SHEL', 'BP', 'LNG', 'EQT', 'KMI', 'NEE', 'ENPH', 'FSLR', 'BEP', 'CEG', 'UEC'] },
+  { name: 'Tecnología', symbols: ['NVDA', 'AMD', 'TSM', 'ASML', 'GOOGL', 'MSFT', 'AMZN', 'ORCL', 'PLTR', 'SMCI', 'ARM', 'CRM', 'SNDK', 'NVTS', 'EWY'] },
+  { name: 'Espacio', symbols: ['SPCX', 'ASTS', 'LUNR', 'PL', 'BKSY', 'SPIR', 'MNTS', 'ACHR', 'JOBY'] },
+];
+const SAMPLE_LIST = ['SPY', 'QQQ', 'AAPL', 'NVDA', 'AMD', 'INTC', 'MSFT', 'TSLA', 'MELI'];
+
 const DEFAULTS = {
   settings: {
     style: 'glass',          // glass | dark | light
@@ -27,7 +39,7 @@ const DEFAULTS = {
     pomodoroBreak: 5,
     autoUpdate: true,
     claudeNotify: true,
-    watchlists: [{ name: 'Mi lista', symbols: ['SPY', 'QQQ', 'AAPL', 'NVDA', 'AMD', 'INTC', 'MSFT', 'TSLA', 'MELI'] }],
+    watchlists: LUCAS_LISTS,
     stockAlertPct: 3,
     stockTargets: [],          // { id, symbol, op: '>' | '<', price }
     updateUrl: '',
@@ -75,6 +87,13 @@ class Store {
         this.state.settings.widgets = ws;
         this.state.settings.migrated130 = true;
       }
+      // v1.3.3: cargar la watchlist de Lucas (se conservan las listas que haya creado él)
+      if (!raw.settings?.migrated133) {
+        const own = (this.state.settings.watchlists || []).filter((l) => !(l.name === 'Mi lista' && l.symbols.join() === SAMPLE_LIST.join()) && !LUCAS_LISTS.some((x) => x.name === l.name));
+        this.state.settings.watchlists = [...LUCAS_LISTS, ...own.filter((l) => l.symbols.length)];
+        this.state.settings.migrated133 = true;
+      }
+      if (['migrated103', 'migrated110', 'migrated130', 'migrated133'].some((k) => !raw.settings?.[k])) this.save();
     } catch { /* primera vez */ }
     try {
       const buf = fs.readFileSync(this.secretFile);
