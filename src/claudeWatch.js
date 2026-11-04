@@ -122,7 +122,15 @@ function createClaudeWatch({ log, onEvent, onChange }) {
   let first = true;
   function tick() {
     const now = Date.now();
-    if (now - lastList > 15000 || first) { known = listFiles(); lastList = now; }
+    if (now - lastList > 15000 || first) {
+      known = listFiles(); lastList = now;
+      if (first) {
+        // diagnóstico: qué carpetas de Claude Code hay en esta PC y cuándo se usaron por última vez
+        const info = roots().map((r) => { try { fs.accessSync(r); return r + ' (existe)'; } catch { return r + ' (no existe)'; } });
+        let newest = 0; for (const f of known) { try { newest = Math.max(newest, fs.statSync(f).mtimeMs); } catch {} }
+        log('claude: carpetas', info, '| registros:', known.length, '| último uso:', newest ? new Date(newest).toLocaleString('es-AR') : 'nunca');
+      }
+    }
     for (const file of known) {
       let mtime = 0; try { mtime = fs.statSync(file).mtimeMs; } catch { continue; }
       if (!first && now - mtime > 3600e3 && files.has(file)) continue;   // sin actividad en la última hora

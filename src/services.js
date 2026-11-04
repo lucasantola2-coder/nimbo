@@ -150,7 +150,7 @@ function claudeCode() {
       }
     }
   }
-  if (!found) return { error: 'No se encontró Claude Code en este PC (~/.claude)' };
+  if (!found) return { error: 'No encontré Claude Code instalado en esta PC.', notInstalled: true };
   entries.sort((a, b) => a.ts - b.ts);
   // bloques de 5 h: empiezan en la hora en punto del primer mensaje
   const BLOCK = 5 * 3600e3;

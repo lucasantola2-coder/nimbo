@@ -379,6 +379,9 @@ const WIDGET_DEFS = {
       }
       html += `<label class="switch"><input type="checkbox" data-setting="claudeNotify" ${s.settings.claudeNotify ? 'checked' : ''}><span>Avisarme cuando Claude termine o me necesite</span></label><div class="sep"></div>`;
       html += errorBox(c?.error);
+      const idleLocal = !ses.length && (!c?.today || !c.today.messages);
+      if (idleLocal) html += `<div class="info"><b>${icon('asterisk', 15)} ¿Usas Claude en la nube?</b>
+        <span>Nimbo sigue el Claude Code que corre <b>en esta PC</b> (terminal o app de escritorio). Las sesiones en la nube, como claude.ai/code o la app de Claude en modo nube, corren en servidores de Anthropic y no dejan registros acá: esas te avisan desde la propia app de Claude.</span></div>`;
       if (!c || c.error) return html;
       const a = c.active;
       html += a
