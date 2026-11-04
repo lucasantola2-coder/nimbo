@@ -24,4 +24,5 @@ const out = {
   files,
 };
 fs.writeFileSync(path.join(root, 'update.json'), JSON.stringify(out));
+fs.writeFileSync(path.join(root, 'version.json'), JSON.stringify({ version: out.version, notes: out.notes, date: out.date }));
 console.log(`update.json: versión ${out.version}, ${Object.keys(files).length} archivos, ${(JSON.stringify(out).length / 1024).toFixed(0)} KB`);

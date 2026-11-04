@@ -19,6 +19,7 @@ function createUpdater({ log, currentVersion, getUrl, onUpdated }) {
   const base = path.join(app.getPath('userData'), 'updates');
   const stateFile = path.join(base, 'state.json');
   let checking = false;
+  let etag = null;
   let last = { at: 0, status: 'idle', message: '', available: null };
 
   function readState() { try { return JSON.parse(fs.readFileSync(stateFile, 'utf8')); } catch { return {}; } }
@@ -30,9 +31,23 @@ function createUpdater({ log, currentVersion, getUrl, onUpdated }) {
     if (url.includes('/OWNER/')) { last = { at: Date.now(), status: 'off', message: 'Las actualizaciones automáticas todavía no están configuradas.' }; return last; }
     checking = true;
     try {
-      log('buscando actualizaciones en', url);
-      const res = await fetch(url + (url.includes('?') ? '&' : '?') + 't=' + Date.now(), { signal: AbortSignal.timeout(30000), headers: { 'Cache-Control': 'no-cache' } });
-      if (res.status === 404) { last = { at: Date.now(), status: 'off', message: 'Todavía no hay actualizaciones publicadas.' }; return last; }
+      // 1) Preguntar solo "¿cambió algo?": version.json pesa unos bytes y, si no cambió, GitHub responde 304 sin contenido
+      const vurl = url.replace(/update\.json(\?.*)?$/, 'version.json');
+      const headers = {};
+      if (etag && !manual) headers['If-None-Match'] = etag;
+      const vres = await fetch(vurl, { signal: AbortSignal.timeout(20000), headers });
+      if (vres.status === 304) { last = { ...last, at: Date.now(), status: 'latest', message: `Tienes la última versión (${currentVersion}).` }; return last; }
+      if (vres.status === 404) { last = { at: Date.now(), status: 'off', message: 'Todavía no hay actualizaciones publicadas.' }; return last; }
+      if (!vres.ok) throw new Error('HTTP ' + vres.status);
+      etag = vres.headers.get('etag') || null;
+      const info = await vres.json();
+      if (cmpVersion(info.version, currentVersion) <= 0) {
+        last = { at: Date.now(), status: 'latest', message: `Tienes la última versión (${currentVersion}).` };
+        return last;
+      }
+      // 2) Hay una versión nueva: recién ahora se descarga el código
+      log('versión nueva disponible:', info.version, '- descargando');
+      const res = await fetch(url + (url.includes('?') ? '&' : '?') + 't=' + Date.now(), { signal: AbortSignal.timeout(60000), headers: { 'Cache-Control': 'no-cache' } });
       if (!res.ok) throw new Error('HTTP ' + res.status);
       const upd = await res.json();
       if (!upd.version || !upd.files) throw new Error('archivo de actualización inválido');

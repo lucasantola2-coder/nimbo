@@ -594,7 +594,7 @@ function setupUpdater() {
     },
   });
   setTimeout(() => store.settings.autoUpdate !== false && updater.check(), 20e3);
-  setInterval(() => store.settings.autoUpdate !== false && updater.check(), 30 * 60e3);
+  setInterval(() => store.settings.autoUpdate !== false && updater.check(), 60 * 60e3);   // pregunta mínima: unos bytes
   setTimeout(() => global.NIMBO?.markHealthy?.(), 15e3);   // arrancó bien
   if (global.NIMBO?.rolledBack) setTimeout(() => notify('Nimbo', `La versión ${global.NIMBO.rolledBack} no arrancó bien; se volvió a la anterior.`), 3000);
 }
