@@ -260,7 +260,7 @@ const refreshers = {
   github: () => runService('github', () => services.github(store.settings.githubUser, store.secret('githubToken'))),
   stocks: () => runService('stocks', () => services.quotes(allSymbols())),
 };
-const intervals = { weather: 20, calendar: 15, claudeCode: 1, anthropic: 15, openai: 15, github: 10, stocks: 1 }; // minutos
+const intervals = { weather: 20, calendar: 5, claudeCode: 1, anthropic: 15, openai: 15, github: 10, stocks: 1 }; // minutos
 const lastRun = {};
 function tickServices(force) {
   const now = Date.now();

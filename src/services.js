@@ -51,6 +51,17 @@ async function weather(loc) {
 }
 
 // ---------------- Calendario (enlaces iCal de Google / Outlook / iCloud) ----------------
+// Explica en castellano los errores más comunes al pegar un enlace de calendario
+function calendarError(url, msg) {
+  let host = 'calendario';
+  try { host = new URL(url).hostname; } catch {}
+  const google = /calendar\.google\.com/.test(host);
+  if (google && !/\/ical\//.test(url)) return 'Google: ese no es un enlace iCal. En Configuración → tu calendario → Integrar el calendario, copia la «Dirección secreta en formato iCal».';
+  if (google && /HTTP 404/.test(msg) && /\/public\//.test(url)) return 'Google: pegaste la dirección PÚBLICA y tu calendario no es público. Copia la «Dirección secreta en formato iCal» (la que dice private-).';
+  if (google && /HTTP 404/.test(msg)) return 'Google no encontró el calendario: el enlace secreto pudo cambiar o estar incompleto. Vuelve a copiar la «Dirección secreta en formato iCal».';
+  if (/HTTP 40[13]/.test(msg)) return `${host}: el calendario no es accesible con ese enlace. Usa el enlace secreto o publicado (ICS).`;
+  return `${host}: ${msg}`;
+}
 async function calendar(urls) {
   if (!urls?.length) return { events: [], error: 'Pega el enlace iCal secreto de tu calendario en Ajustes' };
   const ical = require('node-ical');
@@ -90,7 +101,7 @@ async function calendar(urls) {
         }
       }
     } catch (e) {
-      errors.push(`${new URL(url).hostname}: ${e.message}`);
+      errors.push(calendarError(url, e.message));
     }
   }
   // quitar duplicados (misma hora y título)
